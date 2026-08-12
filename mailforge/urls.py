@@ -93,6 +93,31 @@ urlpatterns = [
         name="portal-domain-dns-check",
     ),
     path(
+        "portal/tenants/<slug:tenant_slug>/domains/<int:domain_pk>/mailboxes/create/",
+        portal_views.mailbox_create,
+        name="portal-mailbox-create",
+    ),
+    path(
+        "portal/tenants/<slug:tenant_slug>/domains/<int:domain_pk>/mailboxes/<int:mailbox_pk>/suspend/",
+        portal_views.mailbox_suspend,
+        name="portal-mailbox-suspend",
+    ),
+    path(
+        "portal/tenants/<slug:tenant_slug>/domains/<int:domain_pk>/mailboxes/<int:mailbox_pk>/reactivate/",
+        portal_views.mailbox_reactivate,
+        name="portal-mailbox-reactivate",
+    ),
+    path(
+        "portal/tenants/<slug:tenant_slug>/domains/<int:domain_pk>/mailboxes/<int:mailbox_pk>/password-reset/",
+        portal_views.mailbox_password_reset,
+        name="portal-mailbox-password-reset",
+    ),
+    path(
+        "portal/tenants/<slug:tenant_slug>/domains/<int:domain_pk>/mailboxes/<int:mailbox_pk>/delete/",
+        portal_views.mailbox_delete,
+        name="portal-mailbox-delete",
+    ),
+    path(
         "portal/tenants/<slug:tenant_slug>/domains/<int:domain_pk>/forwarders/create/",
         portal_views.forwarder_create,
         name="portal-forwarder-create",

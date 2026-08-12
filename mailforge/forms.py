@@ -46,6 +46,36 @@ class MailboxCreateForm(forms.Form):
         return password
 
 
+class MailboxPasswordResetForm(forms.Form):
+    password = forms.CharField(
+        label="New password",
+        widget=forms.PasswordInput(render_value=False),
+        strip=False,
+    )
+
+    def clean_password(self):
+        password = self.cleaned_data["password"]
+        validate_password(password)
+        return password
+
+
+class MailboxDeleteForm(forms.Form):
+    confirm_email = forms.EmailField(
+        label="Type the mailbox address to confirm",
+        help_text="Deletion is permanent in the Stalwart backend and the address remains reserved in MailForge.",
+    )
+
+    def __init__(self, *args, expected_email: str, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.expected_email = expected_email.lower()
+
+    def clean_confirm_email(self):
+        value = self.cleaned_data["confirm_email"].strip().lower()
+        if value != self.expected_email:
+            raise ValidationError("The confirmation address does not match this mailbox.")
+        return value
+
+
 class ForwarderCreateForm(forms.Form):
     local_part = forms.CharField(max_length=64, label="Forwarder name")
     destinations = forms.CharField(

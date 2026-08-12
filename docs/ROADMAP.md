@@ -1,74 +1,75 @@
 # Roadmap
 
-## Phase 0 — Repository and lab
+## Phase 0 — Foundation
 - [x] Define architecture.
-- [x] Define tenant model.
+- [x] Define MailForge tenant model.
 - [x] Create Django starter scaffold.
-- [ ] Build a non-production mailcow lab.
-- [ ] Confirm VPS port 25 and PTR capability.
-- [ ] Create test domain.
+- [x] Remove Docker dependency from the design.
+- [x] Select native Stalwart backend.
+- [ ] Build a non-production Stalwart lab on Ubuntu.
+- [ ] Confirm VPS outbound port 25 and PTR/rDNS support.
+- [ ] Connect a test domain.
 
 ## Phase 1 — Core control plane
-- [ ] Portal authentication.
+- [ ] Portal authentication and tenant-scoped API.
 - [ ] Tenant and membership CRUD.
-- [ ] Domain ownership verification.
-- [ ] Mailcow API adapter.
+- [x] Domain ownership TXT verification core.
+- [x] Retry-safe verification task.
+- [x] Audit event for verified ownership.
+- [x] Stalwart JMAP adapter foundation.
 - [ ] Idempotent domain provisioning.
-- [ ] Mailbox CRUD.
+- [ ] Mailbox CRUD and lifecycle.
 - [ ] Alias CRUD.
-- [ ] Quotas.
-- [ ] Audit events.
-- [ ] Admin emergency suspend.
+- [ ] Quota enforcement.
+- [ ] Emergency suspend controls.
 
 ## Phase 2 — DNS and deliverability
 - [ ] DNS status dashboard.
 - [ ] MX/SPF/DKIM/DMARC checks.
-- [ ] PTR check.
+- [ ] PTR/rDNS check.
 - [ ] MTA-STS/TLS-RPT guidance.
 - [ ] Sending activation gate.
-- [ ] Queue/reputation metrics.
+- [ ] Queue/reputation monitoring.
 
-## Phase 3 — Customer experience
-- [ ] SOGo branding.
-- [ ] Webmail launch links.
-- [ ] Mail client setup instructions.
-- [ ] Autoconfig/autodiscover.
-- [ ] IMAP migration assistant.
-- [ ] Password/app-password workflows.
-- [ ] Storage usage dashboard.
+## Phase 3 — MailForge Webmail
+- [ ] JMAP session/authentication integration.
+- [ ] Inbox/message list.
+- [ ] Conversation/thread view.
+- [ ] Compose/reply/forward.
+- [ ] Attachments.
+- [ ] Search.
+- [ ] Folders/labels and spam/trash.
+- [ ] Draft autosave.
+- [ ] Real-time JMAP updates.
 
-## Phase 4 — Billing
+## Phase 4 — Collaboration
+- [ ] Contacts UI over JMAP for Contacts.
+- [ ] Calendar UI over JMAP for Calendars.
+- [ ] File storage UI over JMAP/WebDAV.
+- [ ] Sharing and permissions.
+
+## Phase 5 — Billing
 - [ ] Plan/entitlement engine.
 - [ ] Provider-neutral payment abstraction.
-- [ ] Subscriptions.
-- [ ] Invoice/payment history.
-- [ ] Grace periods.
-- [ ] Suspension/reactivation.
+- [ ] Subscriptions and payment history.
+- [ ] Grace periods and reactivation.
 - [ ] Operator-owned free plan.
 
-## Phase 5 — Security and abuse readiness
-- [ ] MFA/passkeys for operator.
+## Phase 6 — Security and abuse readiness
+- [ ] MFA/passkeys for operator accounts.
 - [ ] Tenant admin MFA policy.
-- [ ] Outbound rate limits.
+- [ ] Per-mailbox and per-tenant send limits.
 - [ ] New-tenant probation.
-- [ ] Abuse detection.
-- [ ] Backup automation.
-- [ ] Restore drill.
+- [ ] Abuse/anomaly detection.
+- [ ] Backup automation and restore drill.
 - [ ] Incident runbooks.
 - [ ] External security review before open signup.
 
-## Phase 6 — Reliability
-- [ ] Cold standby.
-- [ ] Off-site encrypted backups.
+## Phase 7 — Reliability and scale
+- [ ] Separate mail and control-plane VPSs.
+- [ ] Encrypted off-site backups.
 - [ ] External monitoring.
 - [ ] Automated restore verification.
-- [ ] Upgrade/rollback runbook.
-
-## Phase 7 — Premium capabilities
-- [ ] Custom tenant branding.
-- [ ] Custom webmail hostname.
-- [ ] Dedicated outbound routes/IP pools.
-- [ ] Retention/archive options.
-- [ ] SSO/OIDC.
-- [ ] Additional mail backend adapter.
-- [ ] API for resellers.
+- [ ] Warm/cold standby strategy.
+- [ ] Dedicated outbound routes/IP pools for trusted customers.
+- [ ] Dedicated Stalwart instances for high-isolation plans.

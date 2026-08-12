@@ -60,8 +60,6 @@ def provision_forwarder(
     if address in destinations:
         raise ForwarderProvisioningError("A forwarder cannot forward to itself.")
 
-    backend = backend or get_mail_backend()
-
     with transaction.atomic():
         locked_domain = Domain.objects.select_for_update().get(pk=domain_id)
         if Mailbox.objects.filter(
@@ -80,7 +78,11 @@ def provision_forwarder(
             raise ForwarderProvisioningError("That forwarder already exists.") from exc
 
     try:
-        created = backend.create_alias(address=alias.email_address, destinations=destinations)
+        resolved_backend = backend or get_mail_backend()
+        created = resolved_backend.create_alias(
+            address=alias.email_address,
+            destinations=destinations,
+        )
         backend_identifier = str(created["id"])
     except Exception:
         alias.delete()

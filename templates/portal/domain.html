@@ -1,0 +1,115 @@
+{% extends 'base.html' %}
+{% block title %}{{ domain.name }} · MailForge{% endblock %}
+{% block content %}
+<a class="back" href="{% url 'portal-tenant' tenant_slug=tenant.slug %}">← {{ tenant.name }}</a>
+<div class="page-heading split-heading">
+  <div>
+    <div class="eyebrow">DOMAIN</div>
+    <h1>{{ domain.name }}</h1>
+    <p class="muted">{{ domain.get_status_display }} · Backend: {{ domain.backend }}</p>
+  </div>
+  <span class="pill large status-{{ domain.status }}">{{ domain.get_status_display }}</span>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Ownership verification</h2>
+    {% if domain.verified_at %}
+      <div class="success-panel">
+        <strong>Verified</strong>
+        <div class="small">Verified {{ domain.verified_at|date:"M j, Y H:i" }}</div>
+      </div>
+    {% else %}
+      <p class="muted">Create this TXT record at your DNS provider, then click Verify domain.</p>
+      <div class="dns-record">
+        <div><span>Type</span><code>TXT</code></div>
+        <div><span>Name</span><code>{{ domain.verification_record_name }}</code></div>
+        <div><span>Value</span><code class="wrap">{{ domain.verification_record_value }}</code></div>
+      </div>
+      {% if can_manage %}
+      <form method="post" action="{% url 'portal-domain-verify' tenant_slug=tenant.slug domain_pk=domain.pk %}">
+        {% csrf_token %}
+        <button class="button primary" type="submit">Verify domain</button>
+      </form>
+      {% endif %}
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Mail backend</h2>
+    {% if domain.backend_identifier %}
+      <div class="success-panel">
+        <strong>Provisioned in Stalwart</strong>
+        <div class="small">Backend ID: {{ domain.backend_identifier }}</div>
+      </div>
+      <p class="muted">The next DNS phase will surface Stalwart's generated MX, SPF, DKIM and DMARC records here.</p>
+    {% else %}
+      <p class="muted">Provisioning creates the verified domain in the native Stalwart server.</p>
+      {% if can_manage and domain.verified_at %}
+      <form method="post" action="{% url 'portal-domain-provision' tenant_slug=tenant.slug domain_pk=domain.pk %}">
+        {% csrf_token %}
+        <button class="button primary" type="submit">Provision in Stalwart</button>
+      </form>
+      {% elif not domain.verified_at %}
+        <div class="empty">Verify ownership first.</div>
+      {% endif %}
+    {% endif %}
+  </section>
+</div>
+
+<div class="grid two top-gap">
+  <section class="card">
+    <div class="section-heading">
+      <h2>Mailboxes</h2>
+      <span class="pill">{{ mailboxes|length }}</span>
+    </div>
+    {% if mailboxes %}
+      <div class="list compact">
+        {% for mailbox in mailboxes %}
+          <div class="list-row static">
+            <div>
+              <strong>{{ mailbox.email_address }}</strong>
+              <div class="muted small">{{ mailbox.display_name|default:"No display name" }} · {{ mailbox.quota_mb }} MB</div>
+            </div>
+            <span class="pill status-{{ mailbox.status }}">{{ mailbox.get_status_display }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty">No mailboxes yet.</div>
+    {% endif %}
+    <p class="muted small top-gap-sm">Mailbox provisioning is already available through the authenticated v1 API; the password never persists in MailForge.</p>
+  </section>
+
+  <section class="card">
+    <div class="section-heading">
+      <h2>Forwarders</h2>
+      <span class="pill">{{ forwarders|length }}</span>
+    </div>
+    {% if forwarders %}
+      <div class="list compact">
+        {% for forwarder in forwarders %}
+          <div class="list-row static">
+            <div>
+              <strong>{{ forwarder.email_address }}</strong>
+              <div class="muted small">→ {{ forwarder.destinations|join:", " }}</div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty">No forwarders yet.</div>
+    {% endif %}
+
+    {% if can_manage and domain.backend_identifier %}
+      <hr>
+      <h3>Create forwarder</h3>
+      <form method="post" action="{% url 'portal-forwarder-create' tenant_slug=tenant.slug domain_pk=domain.pk %}" class="stacked-form">
+        {% csrf_token %}
+        {{ forwarder_form.as_p }}
+        <button class="button" type="submit">Create forwarder</button>
+      </form>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

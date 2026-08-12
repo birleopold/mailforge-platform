@@ -6,11 +6,18 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.domains.api import MANAGE_ROLES, tenant_membership_for_request
-from apps.mailboxes.forwarders import ForwarderProvisioningError, provision_forwarder
+from apps.mailboxes.forwarders import (
+    ForwarderLifecycleError,
+    ForwarderProvisioningError,
+    delete_forwarder,
+    provision_forwarder,
+    update_forwarder,
+)
 from apps.mailboxes.models import Mailbox
 from apps.mailboxes.serializers import (
     ForwarderCreateSerializer,
     ForwarderSerializer,
+    ForwarderUpdateSerializer,
     MailboxCreateSerializer,
     MailboxPasswordResetSerializer,
     MailboxSerializer,
@@ -47,6 +54,10 @@ def _mailbox_or_404(domain, pk):
         domain.mailboxes.exclude(status=Mailbox.Status.DELETED),
         pk=pk,
     )
+
+
+def _forwarder_or_404(domain, pk):
+    return get_object_or_404(domain.aliases.filter(active=True), pk=pk)
 
 
 def _lifecycle_error_response(exc):
@@ -193,8 +204,10 @@ class TenantForwarderListCreateView(APIView):
 
     def post(self, request, tenant_slug, domain_pk):
         domain, membership = domain_and_membership(request, tenant_slug, domain_pk)
-        if membership.role not in MANAGE_ROLES:
-            raise PermissionDenied("Only tenant owners and administrators can create forwarders.")
+        _require_manager(
+            membership,
+            "Only tenant owners and administrators can create forwarders.",
+        )
 
         serializer = ForwarderCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -220,5 +233,47 @@ class TenantForwarderDetailView(APIView):
 
     def get(self, request, tenant_slug, domain_pk, pk):
         domain, _ = domain_and_membership(request, tenant_slug, domain_pk)
-        forwarder = get_object_or_404(domain.aliases.filter(active=True), pk=pk)
+        forwarder = _forwarder_or_404(domain, pk)
         return Response(ForwarderSerializer(forwarder).data)
+
+    def put(self, request, tenant_slug, domain_pk, pk):
+        return self._update(request, tenant_slug, domain_pk, pk)
+
+    def patch(self, request, tenant_slug, domain_pk, pk):
+        return self._update(request, tenant_slug, domain_pk, pk)
+
+    def _update(self, request, tenant_slug, domain_pk, pk):
+        domain, membership = domain_and_membership(request, tenant_slug, domain_pk)
+        _require_manager(
+            membership,
+            "Only tenant owners and administrators can update forwarders.",
+        )
+        forwarder = _forwarder_or_404(domain, pk)
+        serializer = ForwarderUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            forwarder = update_forwarder(
+                forwarder.pk,
+                destinations=serializer.validated_data["destinations"],
+                actor=request.user,
+            )
+        except ForwarderLifecycleError as exc:
+            return _lifecycle_error_response(exc)
+        except BACKEND_ERRORS:
+            return _backend_error_response()
+        return Response(ForwarderSerializer(forwarder).data)
+
+    def delete(self, request, tenant_slug, domain_pk, pk):
+        domain, membership = domain_and_membership(request, tenant_slug, domain_pk)
+        _require_manager(
+            membership,
+            "Only tenant owners and administrators can delete forwarders.",
+        )
+        forwarder = _forwarder_or_404(domain, pk)
+        try:
+            delete_forwarder(forwarder.pk, actor=request.user)
+        except ForwarderLifecycleError as exc:
+            return _lifecycle_error_response(exc)
+        except BACKEND_ERRORS:
+            return _backend_error_response()
+        return Response(status=status.HTTP_204_NO_CONTENT)

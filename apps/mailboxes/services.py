@@ -39,8 +39,6 @@ def provision_mailbox(
     if quota_mb <= 0 or quota_mb > settings.MAILFORGE_MAX_MAILBOX_QUOTA_MB:
         raise MailboxProvisioningError("Mailbox quota is outside the allowed range.")
 
-    backend = backend or get_mail_backend()
-
     with transaction.atomic():
         locked_domain = Domain.objects.select_for_update().get(pk=domain_id)
         active_count = locked_domain.mailboxes.exclude(status=Mailbox.Status.DELETED).count()
@@ -60,7 +58,8 @@ def provision_mailbox(
             raise MailboxProvisioningError("That mailbox already exists.") from exc
 
     try:
-        created = backend.create_mailbox(
+        resolved_backend = backend or get_mail_backend()
+        created = resolved_backend.create_mailbox(
             email=mailbox.email_address,
             password=password,
             quota_mb=quota_mb,

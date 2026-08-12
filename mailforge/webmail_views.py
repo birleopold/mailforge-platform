@@ -5,8 +5,9 @@ import secrets
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
+from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_POST
 
 from apps.domains.models import Domain
@@ -22,6 +23,9 @@ from mailforge.webmail_auth import (
     store_oauth_token,
     token_needs_refresh,
 )
+
+
+COMPOSE_MODES = {None, "reply", "reply-all", "forward"}
 
 
 def _oauth_client() -> StalwartOAuthClient:
@@ -99,6 +103,151 @@ def _identity_domain_ready(identity: dict) -> bool:
         sending_enabled=True,
         status=Domain.Status.ACTIVE,
     ).exists()
+
+
+def _format_addresses(addresses) -> str:
+    values = []
+    for address in addresses or []:
+        email = address.get("email") or ""
+        name = address.get("name") or ""
+        if not email:
+            continue
+        values.append(f"{name} <{email}>" if name else email)
+    return ", ".join(values)
+
+
+def _address_text(addresses) -> str:
+    return ", ".join(
+        address["email"]
+        for address in addresses or []
+        if address.get("email")
+    )
+
+
+def _dedupe_addresses(*groups, exclude=None) -> list[dict[str, str]]:
+    excluded = {email.lower() for email in (exclude or set())}
+    seen = set()
+    result = []
+    for group in groups:
+        for address in group or []:
+            email = (address.get("email") or "").strip().lower()
+            if not email or email in excluded or email in seen:
+                continue
+            item = {"email": email}
+            if address.get("name"):
+                item["name"] = address["name"]
+            result.append(item)
+            seen.add(email)
+    return result
+
+
+def _prefixed_subject(subject: str | None, prefix: str) -> str:
+    value = (subject or "").strip()
+    marker = f"{prefix}:"
+    if value.lower().startswith(marker.lower()):
+        return value
+    return f"{marker} {value}".strip()
+
+
+def _quoted_reply_body(source: dict) -> str:
+    original = _plain_text_body(source) or source.get("preview", "")
+    quoted = "\n".join(f"> {line}" if line else ">" for line in original.splitlines())
+    sender = _format_addresses(source.get("replyTo") or source.get("from")) or "sender"
+    sent_at = source.get("sentAt") or source.get("receivedAt") or ""
+    intro = f"On {sent_at}, {sender} wrote:" if sent_at else f"{sender} wrote:"
+    return f"\n\n{intro}\n{quoted}".rstrip()
+
+
+def _forwarded_body(source: dict) -> str:
+    original = _plain_text_body(source) or source.get("preview", "")
+    lines = [
+        "---------- Forwarded message ----------",
+        f"From: {_format_addresses(source.get('from')) or 'Unknown sender'}",
+    ]
+    sent_at = source.get("sentAt") or source.get("receivedAt")
+    if sent_at:
+        lines.append(f"Date: {sent_at}")
+    lines.append(f"Subject: {source.get('subject') or '(no subject)'}")
+    to_value = _format_addresses(source.get("to"))
+    if to_value:
+        lines.append(f"To: {to_value}")
+    cc_value = _format_addresses(source.get("cc"))
+    if cc_value:
+        lines.append(f"Cc: {cc_value}")
+    return "\n\n" + "\n".join(lines) + "\n\n" + original
+
+
+def _preferred_identity_id(source: dict | None, identities: list[dict]) -> str:
+    if source:
+        recipients = {
+            (address.get("email") or "").lower()
+            for address in [*(source.get("to") or []), *(source.get("cc") or [])]
+        }
+        for identity in identities:
+            if identity["email"].lower() in recipients:
+                return identity["id"]
+    return identities[0]["id"]
+
+
+def _compose_initial(source: dict | None, mode: str | None, identities: list[dict]) -> dict:
+    initial = {"identity_id": _preferred_identity_id(source, identities)}
+    if not source or mode is None:
+        return initial
+
+    own_addresses = {identity["email"].lower() for identity in identities}
+    reply_targets = _dedupe_addresses(
+        source.get("replyTo") or source.get("from") or [],
+        exclude=own_addresses,
+    )
+
+    if mode == "reply":
+        initial.update(
+            {
+                "to": _address_text(reply_targets),
+                "subject": _prefixed_subject(source.get("subject"), "Re"),
+                "body": _quoted_reply_body(source),
+            }
+        )
+    elif mode == "reply-all":
+        cc_targets = _dedupe_addresses(
+            source.get("to") or [],
+            source.get("cc") or [],
+            exclude=own_addresses | {item["email"] for item in reply_targets},
+        )
+        initial.update(
+            {
+                "to": _address_text(reply_targets),
+                "cc": _address_text(cc_targets),
+                "subject": _prefixed_subject(source.get("subject"), "Re"),
+                "body": _quoted_reply_body(source),
+            }
+        )
+    elif mode == "forward":
+        initial.update(
+            {
+                "subject": _prefixed_subject(source.get("subject"), "Fwd"),
+                "body": _forwarded_body(source),
+            }
+        )
+    return initial
+
+
+def _reply_threading(source: dict | None, mode: str | None) -> tuple[list[str], list[str]]:
+    if not source or mode not in {"reply", "reply-all"}:
+        return [], []
+    message_ids = [item for item in source.get("messageId") or [] if item]
+    references = [item for item in source.get("references") or [] if item]
+    return message_ids, list(dict.fromkeys([*references, *message_ids]))
+
+
+def _compose_labels(mode: str | None) -> tuple[str, str]:
+    if mode == "reply":
+        return "Reply", "Send reply"
+    if mode == "reply-all":
+        return "Reply all", "Send reply"
+    if mode == "forward":
+        return "Forward message", "Send forward"
+    return "New message", "Send message"
 
 
 @login_required
@@ -252,6 +401,36 @@ def webmail_message(request, email_id):
 
 
 @login_required
+def webmail_attachment(request, email_id, attachment_index):
+    client = _mail_client(request)
+    if client is None:
+        return redirect("webmail-home")
+    try:
+        email = client.get_email(email_id)
+        attachments = email.get("attachments") or []
+        if attachment_index < 0 or attachment_index >= len(attachments):
+            raise Http404
+        attachment = attachments[attachment_index]
+        blob_id = attachment.get("blobId")
+        if not blob_id:
+            raise Http404
+        filename = (attachment.get("name") or f"attachment-{attachment_index + 1}")[:255]
+        content, media_type = client.download_blob(
+            blob_id=blob_id,
+            filename=filename,
+            content_type=attachment.get("type"),
+        )
+    except MailJMAPError:
+        raise Http404 from None
+
+    response = HttpResponse(content, content_type=media_type)
+    response["Content-Disposition"] = content_disposition_header(True, filename)
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Cache-Control"] = "private, no-store"
+    return response
+
+
+@login_required
 @require_POST
 def webmail_mark_unread(request, email_id):
     client = _mail_client(request)
@@ -267,7 +446,10 @@ def webmail_mark_unread(request, email_id):
 
 
 @login_required
-def webmail_compose(request):
+def webmail_compose(request, source_id=None, mode=None):
+    if mode not in COMPOSE_MODES:
+        raise Http404
+
     client = _mail_client(request)
     if client is None:
         return redirect("webmail-home")
@@ -275,15 +457,22 @@ def webmail_compose(request):
     try:
         _, account = _account_context(client)
         identities = _concrete_identities(client)
+        source = client.get_email(source_id) if source_id else None
     except MailJMAPError:
-        messages.error(request, "Sending identities could not be loaded from the mail server.")
+        messages.error(request, "The message or sending identities could not be loaded.")
         return redirect("webmail-inbox")
 
     if not identities:
         messages.error(request, "This mailbox has no concrete sending identity.")
         return redirect("webmail-inbox")
 
-    form = ComposeForm(request.POST or None, identities=identities)
+    initial = _compose_initial(source, mode, identities)
+    form = ComposeForm(
+        request.POST or None,
+        request.FILES or None,
+        identities=identities,
+        initial=initial,
+    )
     if request.method == "POST" and form.is_valid():
         identity = next(
             (item for item in identities if item["id"] == form.cleaned_data["identity_id"]),
@@ -295,7 +484,31 @@ def webmail_compose(request):
                 "Sending is disabled for this domain until MailForge DNS readiness checks pass.",
             )
         else:
+            uploaded_attachments = []
             try:
+                for uploaded in form.cleaned_data["attachments"]:
+                    uploaded_attachments.append(
+                        client.upload_blob(
+                            data=uploaded.read(),
+                            filename=uploaded.name[:255] or "attachment",
+                            content_type=uploaded.content_type,
+                        )
+                    )
+
+                forwarded_attachments = []
+                if mode == "forward" and source:
+                    forwarded_attachments = [
+                        {
+                            "blobId": item["blobId"],
+                            "type": item.get("type") or "application/octet-stream",
+                            "name": item.get("name") or "attachment",
+                            "size": item.get("size"),
+                        }
+                        for item in source.get("attachments") or []
+                        if item.get("blobId")
+                    ]
+
+                in_reply_to, references = _reply_threading(source, mode)
                 client.send_plaintext(
                     identity_id=identity["id"],
                     to=form.cleaned_data["to"],
@@ -303,19 +516,35 @@ def webmail_compose(request):
                     bcc=form.cleaned_data["bcc"],
                     subject=form.cleaned_data["subject"],
                     body=form.cleaned_data["body"],
+                    attachments=[*forwarded_attachments, *uploaded_attachments],
+                    in_reply_to=in_reply_to,
+                    references=references,
                 )
             except MailJMAPError as exc:
                 form.add_error(None, str(exc))
             else:
+                if source_id and mode in {"reply", "reply-all"}:
+                    try:
+                        client.set_answered(source_id)
+                    except MailJMAPError:
+                        messages.warning(
+                            request,
+                            "Reply sent, but the original message could not be marked answered.",
+                        )
                 messages.success(request, "Message submitted for delivery.")
                 return redirect("webmail-inbox")
 
+    compose_title, send_label = _compose_labels(mode)
     return render(
         request,
         "webmail/compose.html",
         {
             "mail_account": account,
             "form": form,
+            "compose_title": compose_title,
+            "send_label": send_label,
+            "compose_mode": mode,
+            "source": source,
         },
     )
 

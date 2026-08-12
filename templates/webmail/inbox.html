@@ -5,13 +5,16 @@
   <aside class="mail-sidebar card">
     <div class="eyebrow">WEBMAIL</div>
     <h2>{{ mail_account.name|default:"Mailbox" }}</h2>
-    <a class="mail-folder {% if not selected_mailbox %}active{% endif %}" href="{% url 'webmail-inbox' %}">All mail <span>{{ total }}</span></a>
-    {% for mailbox in mailboxes %}
-      <a class="mail-folder {% if selected_mailbox == mailbox.id %}active{% endif %}" href="{% url 'webmail-inbox' %}?mailbox={{ mailbox.id|urlencode }}">
-        <span>{{ mailbox.name }}</span>
-        {% if mailbox.unreadEmails %}<strong>{{ mailbox.unreadEmails }}</strong>{% endif %}
-      </a>
-    {% endfor %}
+    <a class="button primary full" href="{% url 'webmail-compose' %}">Compose</a>
+    <div class="top-gap-sm">
+      <a class="mail-folder {% if not selected_mailbox %}active{% endif %}" href="{% url 'webmail-inbox' %}">All mail <span>{{ total }}</span></a>
+      {% for mailbox in mailboxes %}
+        <a class="mail-folder {% if selected_mailbox == mailbox.id %}active{% endif %}" href="{% url 'webmail-inbox' %}?mailbox={{ mailbox.id|urlencode }}">
+          <span>{{ mailbox.name }}</span>
+          {% if mailbox.unreadEmails %}<strong>{{ mailbox.unreadEmails }}</strong>{% endif %}
+        </a>
+      {% endfor %}
+    </div>
     <form method="post" action="{% url 'webmail-disconnect' %}" class="top-gap">
       {% csrf_token %}
       <button class="button" type="submit">Disconnect mailbox</button>

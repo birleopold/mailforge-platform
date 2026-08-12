@@ -118,8 +118,18 @@ MAILFORGE_MAX_ATTACHMENT_MB = int(os.environ.get("MAILFORGE_MAX_ATTACHMENT_MB", 
 MAILFORGE_MAX_TOTAL_ATTACHMENT_MB = int(
     os.environ.get("MAILFORGE_MAX_TOTAL_ATTACHMENT_MB", "25")
 )
+MAILFORGE_DNS_RECONCILE_MINUTES = max(
+    1,
+    int(os.environ.get("MAILFORGE_DNS_RECONCILE_MINUTES", "15")),
+)
 
 CELERY_BROKER_URL = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")
 CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+CELERY_BEAT_SCHEDULE = {
+    "mailforge-domain-readiness-reconciliation": {
+        "task": "apps.domains.tasks.reconcile_all_domain_readiness",
+        "schedule": MAILFORGE_DNS_RECONCILE_MINUTES * 60.0,
+    }
+}
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

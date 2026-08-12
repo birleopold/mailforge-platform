@@ -87,6 +87,72 @@ def test_get_domain_requests_dns_zone_and_dkim_management(monkeypatch):
     assert domain["dkimManagement"] == {"@type": "Automatic"}
 
 
+def test_create_mailbox_blocks_email_send_when_domain_not_ready(monkeypatch):
+    calls = []
+
+    def handler(request):
+        payload = json.loads(request.content)
+        method, args, call_id = payload["methodCalls"][0]
+        calls.append(method)
+        if method == "x:Domain/query":
+            data = {"ids": ["domain-1"]}
+        elif method == "x:Account/set":
+            account = args["create"]["mailforge"]
+            assert account["name"] == "alice"
+            assert account["domainId"] == "domain-1"
+            assert account["permissions"] == {
+                "@type": "Merge",
+                "enabledPermissions": {},
+                "disabledPermissions": {"emailSend": True},
+            }
+            data = {"created": {"mailforge": {"id": "account-1"}}}
+        else:
+            raise AssertionError(method)
+        return httpx.Response(200, json={"methodResponses": [[method, data, call_id]]})
+
+    _mock_httpx(monkeypatch, handler)
+    client = StalwartClient(base_url="https://mail.example.com", token="test-token")
+
+    created = client.create_mailbox(
+        email="alice@example.com",
+        password="safe-password",
+        quota_mb=5120,
+        sending_enabled=False,
+    )
+
+    assert created["id"] == "account-1"
+    assert calls == ["x:Domain/query", "x:Account/set"]
+
+
+def test_set_account_sending_enabled_restores_inherited_user_permission(monkeypatch):
+    updates = []
+
+    def handler(request):
+        payload = json.loads(request.content)
+        method, args, call_id = payload["methodCalls"][0]
+        assert method == "x:Account/set"
+        updates.append(args["update"]["account-1"]["permissions"])
+        return httpx.Response(
+            200,
+            json={"methodResponses": [[method, {"updated": {"account-1": None}}, call_id]]},
+        )
+
+    _mock_httpx(monkeypatch, handler)
+    client = StalwartClient(base_url="https://mail.example.com", token="test-token")
+
+    client.set_account_sending_enabled(account_id="account-1", enabled=False)
+    client.set_account_sending_enabled(account_id="account-1", enabled=True)
+
+    assert updates == [
+        {
+            "@type": "Merge",
+            "enabledPermissions": {},
+            "disabledPermissions": {"emailSend": True},
+        },
+        {"@type": "Inherit"},
+    ]
+
+
 def test_jmap_error_is_raised(monkeypatch):
     def handler(request):
         return httpx.Response(

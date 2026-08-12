@@ -16,6 +16,16 @@ class StalwartAPIError(RuntimeError):
     pass
 
 
+def _mailbox_permissions(*, sending_enabled: bool) -> dict[str, Any]:
+    if sending_enabled:
+        return {"@type": "Inherit"}
+    return {
+        "@type": "Merge",
+        "enabledPermissions": {},
+        "disabledPermissions": {"emailSend": True},
+    }
+
+
 class StalwartClient(MailBackend):
     """Small JMAP management client for a native Stalwart installation."""
 
@@ -106,7 +116,15 @@ class StalwartClient(MailBackend):
             raise StalwartAPIError(f"Expected one Stalwart domain for {domain!r}, found {len(ids)}.")
         return ids[0]
 
-    def create_mailbox(self, *, email, password, quota_mb, display_name=""):
+    def create_mailbox(
+        self,
+        *,
+        email,
+        password,
+        quota_mb,
+        display_name="",
+        sending_enabled=True,
+    ):
         local_part, domain = email.rsplit("@", 1)
         domain_id = self.get_domain_id(domain)
         data = self._call(
@@ -123,7 +141,9 @@ class StalwartClient(MailBackend):
                         },
                         "memberGroupIds": {},
                         "roles": {"@type": "User"},
-                        "permissions": {"@type": "Inherit"},
+                        "permissions": _mailbox_permissions(
+                            sending_enabled=bool(sending_enabled)
+                        ),
                         "quotas": {"maxDiskQuota": quota_mb * 1024 * 1024},
                         "aliases": {},
                         "encryptionAtRest": {"@type": "Disabled"},
@@ -135,6 +155,24 @@ class StalwartClient(MailBackend):
         if not created or "id" not in created:
             raise StalwartAPIError(f"Mailbox was not created: {data}")
         return created
+
+    def set_account_sending_enabled(self, *, account_id, enabled):
+        data = self._call(
+            "x:Account/set",
+            {
+                "update": {
+                    str(account_id): {
+                        "permissions": _mailbox_permissions(sending_enabled=bool(enabled))
+                    }
+                }
+            },
+        )
+        not_updated = (data.get("notUpdated") or {}).get(str(account_id))
+        if not_updated:
+            raise StalwartAPIError(
+                f"Account sending policy was not updated: {not_updated}"
+            )
+        return data
 
     def suspend_mailbox(self, *, email):
         raise NotImplementedError("Mailbox suspension is part of the lifecycle-management milestone.")

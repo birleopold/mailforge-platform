@@ -116,7 +116,11 @@ def _check_dmarc(resolver, domain_name: str) -> dict[str, Any]:
     dmarc_records = [value for value in values if value.lower().startswith("v=dmarc1")]
     has_policy = False
     if len(dmarc_records) == 1:
-        tags = {part.split("=", 1)[0].strip().lower(): part.split("=", 1)[1].strip().lower() for part in dmarc_records[0].split(";") if "=" in part}
+        tags = {
+            part.split("=", 1)[0].strip().lower(): part.split("=", 1)[1].strip().lower()
+            for part in dmarc_records[0].split(";")
+            if "=" in part
+        }
         has_policy = tags.get("p") in {"none", "quarantine", "reject"}
     passed = len(dmarc_records) == 1 and has_policy
     return {
@@ -146,7 +150,17 @@ def _check_ptr(resolver, mail_ipv4: str, mail_hostname: str) -> dict[str, Any]:
             "detail": "A mail hostname is required before PTR can be validated.",
         }
 
-    reverse_name = dns.reversename.from_address(mail_ipv4)
+    try:
+        reverse_name = dns.reversename.from_address(mail_ipv4)
+    except ValueError:
+        return {
+            "status": "fail",
+            "required": True,
+            "expected": mail_hostname,
+            "observed": [mail_ipv4],
+            "detail": "MAILFORGE_MAIL_IPV4 is not a valid IP address.",
+        }
+
     answer = _resolve(resolver, str(reverse_name), "PTR")
     if answer is None:
         return {

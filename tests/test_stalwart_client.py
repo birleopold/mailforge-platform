@@ -153,6 +153,64 @@ def test_set_account_sending_enabled_restores_inherited_user_permission(monkeypa
     ]
 
 
+def test_mailbox_lifecycle_uses_targeted_account_patches(monkeypatch):
+    calls = []
+
+    def handler(request):
+        payload = json.loads(request.content)
+        method, args, call_id = payload["methodCalls"][0]
+        assert method == "x:Account/set"
+        calls.append(args)
+        if "destroy" in args:
+            data = {"destroyed": ["account-1"]}
+        else:
+            data = {"updated": {"account-1": None}}
+        return httpx.Response(200, json={"methodResponses": [[method, data, call_id]]})
+
+    _mock_httpx(monkeypatch, handler)
+    client = StalwartClient(base_url="https://mail.example.com", token="test-token")
+
+    client.set_account_suspended(account_id="account-1", suspended=True)
+    client.set_account_suspended(
+        account_id="account-1",
+        suspended=False,
+        sending_enabled=False,
+    )
+    client.reset_account_password(account_id="account-1", password="new-strong-password")
+    client.delete_account(account_id="account-1")
+
+    assert calls == [
+        {
+            "update": {
+                "account-1": {
+                    "permissions": {
+                        "@type": "Replace",
+                        "enabledPermissions": {},
+                        "disabledPermissions": {},
+                    }
+                }
+            }
+        },
+        {
+            "update": {
+                "account-1": {
+                    "permissions": {
+                        "@type": "Merge",
+                        "enabledPermissions": {},
+                        "disabledPermissions": {"emailSend": True},
+                    }
+                }
+            }
+        },
+        {
+            "update": {
+                "account-1": {"credentials/0/secret": "new-strong-password"}
+            }
+        },
+        {"destroy": ["account-1"]},
+    ]
+
+
 def test_jmap_error_is_raised(monkeypatch):
     def handler(request):
         return httpx.Response(

@@ -42,7 +42,7 @@
         <strong>Provisioned in Stalwart</strong>
         <div class="small">Backend ID: {{ domain.backend_identifier }}</div>
       </div>
-      <p class="muted">MailForge now checks the public DNS records before enabling sending.</p>
+      <p class="muted">MailForge checks public DNS and synchronizes Stalwart mailbox sending permissions before outbound mail is enabled.</p>
     {% else %}
       <p class="muted">Provisioning creates the verified domain in the native Stalwart server.</p>
       {% if can_manage and domain.verified_at %}
@@ -74,7 +74,7 @@
     {% endif %}
   </div>
 
-  <p class="muted">MailForge enables sending only after ownership, Stalwart provisioning and the required public DNS checks are healthy. PTR/rDNS is enforced when the production server IPv4 is configured.</p>
+  <p class="muted">MailForge enables sending only after ownership, Stalwart provisioning, MX/SPF/DKIM/DMARC checks and backend mailbox-policy synchronization are healthy. PTR/rDNS is enforced when the production server IPv4 is configured.</p>
 
   {% if domain.dns_checks %}
     <div class="list compact">
@@ -117,21 +117,69 @@
       <span class="pill">{{ mailboxes|length }}</span>
     </div>
     {% if mailboxes %}
-      <div class="list compact">
+      <div class="list compact mailbox-list">
         {% for mailbox in mailboxes %}
-          <div class="list-row static">
-            <div>
+          <div class="list-row static mailbox-row">
+            <div class="mailbox-identity">
               <strong>{{ mailbox.email_address }}</strong>
               <div class="muted small">{{ mailbox.display_name|default:"No display name" }} · {{ mailbox.quota_mb }} MB</div>
             </div>
-            <span class="pill status-{{ mailbox.status }}">{{ mailbox.get_status_display }}</span>
+            <div class="mailbox-admin">
+              <span class="pill status-{{ mailbox.status }}">{{ mailbox.get_status_display }}</span>
+              {% if can_manage %}
+                <div class="mailbox-actions">
+                  {% if mailbox.status == 'active' %}
+                    <form method="post" action="{% url 'portal-mailbox-suspend' tenant_slug=tenant.slug domain_pk=domain.pk mailbox_pk=mailbox.pk %}">
+                      {% csrf_token %}
+                      <button class="button small-button" type="submit">Suspend</button>
+                    </form>
+                  {% elif mailbox.status == 'suspended' %}
+                    <form method="post" action="{% url 'portal-mailbox-reactivate' tenant_slug=tenant.slug domain_pk=domain.pk mailbox_pk=mailbox.pk %}">
+                      {% csrf_token %}
+                      <button class="button small-button" type="submit">Reactivate</button>
+                    </form>
+                  {% endif %}
+
+                  <details class="inline-admin-panel">
+                    <summary class="button small-button">Reset password</summary>
+                    <form method="post" action="{% url 'portal-mailbox-password-reset' tenant_slug=tenant.slug domain_pk=domain.pk mailbox_pk=mailbox.pk %}" class="stacked-form compact-admin-form">
+                      {% csrf_token %}
+                      <label for="password-{{ mailbox.pk }}">New password</label>
+                      <input id="password-{{ mailbox.pk }}" type="password" name="password" autocomplete="new-password" required>
+                      <button class="button primary small-button" type="submit">Reset password</button>
+                    </form>
+                  </details>
+
+                  <details class="inline-admin-panel danger-panel">
+                    <summary class="button small-button danger-button">Delete</summary>
+                    <form method="post" action="{% url 'portal-mailbox-delete' tenant_slug=tenant.slug domain_pk=domain.pk mailbox_pk=mailbox.pk %}" class="stacked-form compact-admin-form">
+                      {% csrf_token %}
+                      <p class="muted small">This permanently deletes the Stalwart account. The address remains reserved in MailForge.</p>
+                      <label for="confirm-email-{{ mailbox.pk }}">Type {{ mailbox.email_address }} to confirm</label>
+                      <input id="confirm-email-{{ mailbox.pk }}" type="email" name="confirm_email" autocomplete="off" required>
+                      <button class="button danger-button small-button" type="submit">Delete mailbox</button>
+                    </form>
+                  </details>
+                </div>
+              {% endif %}
+            </div>
           </div>
         {% endfor %}
       </div>
     {% else %}
       <div class="empty">No mailboxes yet.</div>
     {% endif %}
-    <p class="muted small top-gap-sm">Mailbox provisioning is already available through the authenticated v1 API; the password never persists in MailForge.</p>
+
+    {% if can_manage and domain.backend_identifier %}
+      <hr>
+      <h3>Create mailbox</h3>
+      <form method="post" action="{% url 'portal-mailbox-create' tenant_slug=tenant.slug domain_pk=domain.pk %}" class="stacked-form">
+        {% csrf_token %}
+        {{ mailbox_form.as_p }}
+        <button class="button primary" type="submit">Create mailbox</button>
+      </form>
+      <p class="muted small top-gap-sm">Passwords are sent directly to Stalwart and never stored in the MailForge database. If domain sending is not ready, the new account is created with outbound sending disabled.</p>
+    {% endif %}
   </section>
 
   <section class="card">

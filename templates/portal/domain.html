@@ -42,7 +42,7 @@
         <strong>Provisioned in Stalwart</strong>
         <div class="small">Backend ID: {{ domain.backend_identifier }}</div>
       </div>
-      <p class="muted">The next DNS phase will surface Stalwart's generated MX, SPF, DKIM and DMARC records here.</p>
+      <p class="muted">MailForge now checks the public DNS records before enabling sending.</p>
     {% else %}
       <p class="muted">Provisioning creates the verified domain in the native Stalwart server.</p>
       {% if can_manage and domain.verified_at %}
@@ -56,6 +56,59 @@
     {% endif %}
   </section>
 </div>
+
+<section class="card top-gap">
+  <div class="section-heading">
+    <div>
+      <h2>DNS & sending readiness</h2>
+      {% if domain.dns_checked_at %}
+        <div class="muted small">Last checked {{ domain.dns_checked_at|date:"M j, Y H:i" }}</div>
+      {% else %}
+        <div class="muted small">No readiness check has been run yet.</div>
+      {% endif %}
+    </div>
+    {% if domain.sending_enabled %}
+      <span class="pill status-active">Sending enabled</span>
+    {% else %}
+      <span class="pill status-suspended">Sending disabled</span>
+    {% endif %}
+  </div>
+
+  <p class="muted">MailForge enables sending only after ownership, Stalwart provisioning and the required public DNS checks are healthy. PTR/rDNS is enforced when the production server IPv4 is configured.</p>
+
+  {% if domain.dns_checks %}
+    <div class="list compact">
+      {% for check_name, check in domain.dns_checks.items %}
+        <div class="list-row static">
+          <div>
+            <strong>{{ check_name|upper }}</strong>
+            <div class="muted small">{{ check.detail }}</div>
+            <div class="small"><strong>Expected:</strong> <code>{{ check.expected }}</code></div>
+            {% if check.observed %}
+              <div class="small"><strong>Observed:</strong> <code class="wrap">{{ check.observed|join:", " }}</code></div>
+            {% endif %}
+          </div>
+          {% if check.status == 'pass' %}
+            <span class="pill status-active">PASS</span>
+          {% elif check.status == 'fail' %}
+            <span class="pill status-suspended">FAIL</span>
+          {% else %}
+            <span class="pill">{{ check.status|upper }}</span>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty">Run a DNS check after your public records have been added.</div>
+  {% endif %}
+
+  {% if can_manage and domain.backend_identifier %}
+    <form method="post" action="{% url 'portal-domain-dns-check' tenant_slug=tenant.slug domain_pk=domain.pk %}" class="top-gap-sm">
+      {% csrf_token %}
+      <button class="button primary" type="submit">Check DNS readiness</button>
+    </form>
+  {% endif %}
+</section>
 
 <div class="grid two top-gap">
   <section class="card">

@@ -30,25 +30,40 @@
 - [ ] Emergency suspend controls.
 
 ## Phase 2 — DNS and deliverability
-- [ ] Read Stalwart DNS recommendations for each provisioned domain.
-- [ ] DNS status dashboard.
-- [ ] MX/SPF/DKIM/DMARC checks.
-- [ ] PTR/rDNS check.
-- [ ] MTA-STS/TLS-RPT guidance.
-- [ ] Sending activation gate.
+- [x] Persist per-domain DNS readiness snapshots.
+- [x] Browser/API DNS status checks.
+- [x] MX/SPF/DMARC checks.
+- [x] PTR/rDNS check when production server IPv4 is configured.
+- [x] Application-level sending activation gate.
+- [ ] Read and surface Stalwart-generated DKIM recommendations/keys.
+- [ ] DKIM validation.
+- [ ] MTA-STS/TLS-RPT guidance and validation.
+- [ ] Synchronize MailForge readiness/suspension state with Stalwart SMTP submission permissions.
 - [ ] Queue/reputation monitoring.
+- [ ] Real-domain deliverability tests to Gmail/Outlook/Yahoo.
 
 ## Phase 3 — MailForge Webmail
-- [ ] Design mailbox-user authentication/SSO without storing mailbox passwords in Django.
-- [ ] JMAP session discovery and authenticated mailbox access.
-- [ ] Inbox/message list.
+- [x] Mailbox-user OAuth design without storing mailbox passwords in Django.
+- [x] Authorization Code + PKCE integration with encrypted session token storage.
+- [x] JMAP session discovery and authenticated mailbox access.
+- [x] Mailbox/folder sidebar and unread counts.
+- [x] Inbox/message list.
+- [x] Safe plain-text message reader.
+- [x] Server-side mail search.
+- [x] Mark read on open and mark-unread action.
+- [x] Compose with validated To/Cc/Bcc and Stalwart sending identities.
+- [x] Draft creation and `EmailSubmission/set` delivery.
+- [x] Move successfully submitted messages from Drafts to Sent.
+- [x] Block webmail compose when the identity domain is not sending-ready.
 - [ ] Conversation/thread view.
-- [ ] Compose/reply/forward.
-- [ ] Attachments.
-- [ ] Search.
-- [ ] Folders/labels and spam/trash.
-- [ ] Draft autosave.
+- [ ] Reply/reply-all/forward.
+- [ ] Attachment upload/download.
+- [ ] Safe HTML mail sanitization/rendering.
+- [ ] Draft autosave/edit existing drafts.
+- [ ] Move/archive/delete/spam actions.
+- [ ] Pagination/infinite scroll.
 - [ ] Real-time JMAP updates.
+- [ ] OAuth logout/revocation and stronger token lifecycle policy.
 
 ## Phase 4 — Collaboration
 - [ ] Contacts UI over JMAP for Contacts.
@@ -69,6 +84,7 @@
 - [ ] Per-mailbox and per-tenant send limits.
 - [ ] New-tenant probation.
 - [ ] Abuse/anomaly detection.
+- [ ] Backend-enforced suspension and sending restrictions.
 - [ ] Backup automation and restore drill.
 - [ ] Incident runbooks.
 - [ ] External security review before open signup.

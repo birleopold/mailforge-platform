@@ -32,13 +32,15 @@
 ## Phase 2 — DNS and deliverability
 - [x] Persist per-domain DNS readiness snapshots.
 - [x] Browser/API DNS status checks.
-- [x] MX/SPF/DMARC checks.
+- [x] Read and persist Stalwart-generated DNS zone expectations.
+- [x] MX/SPF/DKIM/DMARC checks.
+- [x] Track Stalwart DKIM selector/key changes instead of hard-coding selectors.
 - [x] PTR/rDNS check when production server IPv4 is configured.
 - [x] Application-level sending activation gate.
-- [ ] Read and surface Stalwart-generated DKIM recommendations/keys.
-- [ ] DKIM validation.
+- [x] Synchronize MailForge readiness state with Stalwart `emailSend` account permissions.
+- [x] Create new mailboxes with sending denied until their domain is ready.
+- [x] Periodically reconcile provisioned domains and Stalwart sending permissions with Celery beat.
 - [ ] MTA-STS/TLS-RPT guidance and validation.
-- [ ] Synchronize MailForge readiness/suspension state with Stalwart SMTP submission permissions.
 - [ ] Queue/reputation monitoring.
 - [ ] Real-domain deliverability tests to Gmail/Outlook/Yahoo.
 
@@ -55,9 +57,10 @@
 - [x] Draft creation and `EmailSubmission/set` delivery.
 - [x] Move successfully submitted messages from Drafts to Sent.
 - [x] Block webmail compose when the identity domain is not sending-ready.
+- [x] Reply/reply-all/forward with thread headers and answered state.
+- [x] Attachment upload/download with size limits and authenticated blob access.
+- [x] Preserve original attachments when forwarding.
 - [ ] Conversation/thread view.
-- [ ] Reply/reply-all/forward.
-- [ ] Attachment upload/download.
 - [ ] Safe HTML mail sanitization/rendering.
 - [ ] Draft autosave/edit existing drafts.
 - [ ] Move/archive/delete/spam actions.
@@ -84,7 +87,8 @@
 - [ ] Per-mailbox and per-tenant send limits.
 - [ ] New-tenant probation.
 - [ ] Abuse/anomaly detection.
-- [ ] Backend-enforced suspension and sending restrictions.
+- [x] Backend-enforced readiness-based sending restrictions for MailForge-managed mailboxes.
+- [ ] Emergency account/domain suspension controls.
 - [ ] Backup automation and restore drill.
 - [ ] Incident runbooks.
 - [ ] External security review before open signup.

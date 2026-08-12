@@ -61,6 +61,8 @@ class Alias(models.Model):
     local_part = models.CharField(max_length=64)
     destinations = models.JSONField(default=list)
     active = models.BooleanField(default=True)
+    backend_identifier = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         constraints = [

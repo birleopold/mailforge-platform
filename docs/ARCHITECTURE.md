@@ -1,96 +1,81 @@
 # Architecture
 
-## 1. Core rule: separate control plane from mail plane
+## 1. Control plane and mail plane
 
-MailForge is the control plane. It stores business ownership and orchestration state.
+MailForge is the control plane. Django owns customers, tenant membership, domain ownership, billing, plans, quotas, provisioning state, abuse policy and the future Gmail-style interface.
 
-Mailcow is the mail plane. It stores and transports actual mail.
+Stalwart is the mail plane. It runs natively on Ubuntu under systemd and handles SMTP, IMAP, JMAP, mail storage, calendars, contacts, files, filtering and DKIM.
 
-The Django application must never become a general SMTP relay and should never process raw inbound mail unless a narrow feature explicitly requires it.
+Django must never become an SMTP relay. It talks to Stalwart over HTTPS/JMAP.
 
 ## 2. Components
 
-### Django API / portal
-Responsibilities:
+### Django
 
-- authentication for portal users;
-- tenant membership and roles;
-- domain ownership;
-- mailbox/alias requests;
-- plan entitlements;
-- billing state;
+- authentication and tenant membership;
+- domain and mailbox management;
 - DNS verification;
-- provisioning state;
-- usage snapshots;
-- audit logs;
-- support/admin workflows.
+- plan entitlements and billing;
+- audit logs and support workflows;
+- future webmail/calendar/contact/file UI using JMAP.
 
 ### PostgreSQL
-Source of truth for MailForge business state.
 
-Mailcow remains authoritative for mailbox runtime state. Synchronization jobs reconcile drift.
+Source of truth for MailForge business and tenancy state.
 
-### Celery + Redis/Valkey
-Used for:
+### Celery + Redis
 
-- domain verification;
-- provisioning;
-- mailbox operations;
-- periodic DNS checks;
-- quota/usage synchronization;
-- billing webhooks;
-- backup status checks;
-- reputation/health checks.
+Used for DNS verification, provisioning, usage reconciliation, billing events, health checks and scheduled jobs.
 
-### Mailcow
-Handles SMTP, IMAP, mailbox storage, filtering, SOGo, DKIM, and mail protocols.
+### Stalwart
 
-## 3. Isolation model
+Installed as a native Linux service. Stalwart is authoritative for mailbox runtime data and mail/collaboration objects.
 
-The v1 system uses logical tenant isolation:
+## 3. Community-edition tenancy model
 
-- every Domain belongs to exactly one Tenant;
-- every Mailbox belongs to a Domain and therefore one Tenant;
-- every request is authorized against TenantMembership;
-- API serializers/querysets must always be tenant-scoped;
-- background jobs receive immutable tenant/domain identifiers;
-- provisioning actions are idempotent;
-- mailcow domain administrators are assigned only the domains they should manage.
+Stalwart's native Tenant object is an Enterprise feature. The free/community deployment therefore uses MailForge logical tenancy:
 
-For very high-assurance customers, a later tier can provision a dedicated mailcow instance or dedicated mail cluster.
+- each Domain belongs to exactly one MailForge Tenant;
+- each Mailbox belongs to a Domain;
+- all portal queries and actions are tenant-scoped;
+- customers never receive Stalwart admin credentials;
+- only the MailForge service credential can perform management calls;
+- background jobs carry explicit MailForge tenant/domain identifiers;
+- audit events record privileged changes.
 
-## 4. Mailcow adapter
+For high-assurance customers, later tiers can use a dedicated Stalwart instance/host or Stalwart Enterprise tenancy.
 
-Never scatter direct HTTP calls through Django views.
+## 4. Backend adapter
 
-Use an adapter interface:
+Backend calls stay behind `MailBackend`.
 
-```python
-class MailBackend:
-    def create_domain(...): ...
-    def delete_domain(...): ...
-    def create_mailbox(...): ...
-    def suspend_mailbox(...): ...
-    def create_alias(...): ...
-    def get_usage(...): ...
-```
+`integrations/stalwart/client.py` implements the first backend using Stalwart's management JMAP API.
 
-`integrations/mailcow/client.py` implements the adapter.
+This keeps billing and tenant logic independent from the mail server implementation.
 
-This makes a future Stalwart or other backend possible without rewriting billing and tenant logic.
+## 5. Product UI direction
 
-## 5. State machines
+MailForge will not depend permanently on Stalwart's admin UI. The customer experience is built in Django and progressively consumes JMAP for:
+
+- inbox/message lists;
+- compose/send;
+- search and folders;
+- contacts;
+- calendars;
+- file storage and sharing.
+
+## 6. State machines
 
 Domain:
 
 ```text
 PENDING_VERIFICATION
-    -> VERIFIED
-    -> PROVISIONING
-    -> DNS_CONFIGURATION
-    -> ACTIVE
-    -> SUSPENDED
-    -> DECOMMISSIONED
+ -> VERIFIED
+ -> PROVISIONING
+ -> DNS_CONFIGURATION
+ -> ACTIVE
+ -> SUSPENDED
+ -> DECOMMISSIONED
 ```
 
 Mailbox:
@@ -99,20 +84,19 @@ Mailbox:
 PENDING -> PROVISIONING -> ACTIVE -> SUSPENDED -> DELETED
 ```
 
-Provisioning jobs must be retryable and idempotent.
+Provisioning jobs must be idempotent and retry-safe.
 
-## 6. Reliability path
+## 7. Production topology
 
-### v1
-One production mail VPS + one control-plane VPS is preferable to putting everything on one machine.
+Start with separate concerns even if they share one VPS initially:
 
-### v1.5
-Encrypted off-site backups + cold standby.
+```text
+systemd
+ |- stalwart.service
+ |- mailforge-web.service (Gunicorn)
+ |- mailforge-worker.service (Celery)
+ |- postgresql.service
+ |- redis-server.service
+```
 
-### v2
-Separate database/storage concerns, dedicated monitoring, and warm standby.
-
-### v3
-Multiple mail nodes, dedicated outbound routing/IP pools, and larger-scale storage if demand justifies it.
-
-A second MX server alone does not make mailbox access highly available. It can queue inbound mail, but mailbox replication is a separate problem.
+A safer public deployment later separates the mail plane and Django control plane onto different VPSs and keeps encrypted off-site backups.

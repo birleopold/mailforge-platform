@@ -122,6 +122,16 @@ urlpatterns = [
         portal_views.forwarder_create,
         name="portal-forwarder-create",
     ),
+    path(
+        "portal/tenants/<slug:tenant_slug>/domains/<int:domain_pk>/forwarders/<int:forwarder_pk>/update/",
+        portal_views.forwarder_update,
+        name="portal-forwarder-update",
+    ),
+    path(
+        "portal/tenants/<slug:tenant_slug>/domains/<int:domain_pk>/forwarders/<int:forwarder_pk>/delete/",
+        portal_views.forwarder_delete,
+        name="portal-forwarder-delete",
+    ),
     path("admin/", admin.site.urls),
     path("api/v1/", include("mailforge.api_urls")),
     path("health/", health),

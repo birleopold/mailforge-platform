@@ -14,6 +14,8 @@ User = get_user_model()
 class FakeMailClient:
     def __init__(self):
         self.sent = None
+        self.last_search = None
+        self.seen_updates = []
 
     def session(self):
         return {
@@ -44,8 +46,16 @@ class FakeMailClient:
             }
         ]
 
-    def list_emails(self, *, mailbox_id=None, limit=50, position=0):
+    def list_emails(
+        self,
+        *,
+        mailbox_id=None,
+        search_text=None,
+        limit=50,
+        position=0,
+    ):
         assert mailbox_id in {None, "inbox"}
+        self.last_search = search_text
         return {
             "emails": [
                 {
@@ -73,6 +83,7 @@ class FakeMailClient:
             "from": [{"name": "Sender", "email": "sender@example.test"}],
             "to": [{"name": "Alice", "email": "alice@example.test"}],
             "receivedAt": "2026-08-12T10:00:00Z",
+            "keywords": {},
             "textBody": [{"partId": "1"}],
             "bodyValues": {
                 "1": {
@@ -83,6 +94,9 @@ class FakeMailClient:
             "hasAttachment": False,
             "preview": "Hello",
         }
+
+    def set_seen(self, email_id, *, seen):
+        self.seen_updates.append((email_id, seen))
 
     def send_plaintext(self, **kwargs):
         self.sent = kwargs
@@ -138,16 +152,42 @@ def test_inbox_renders_user_scoped_jmap_messages(authenticated_client):
 
 
 @pytest.mark.django_db
-def test_message_plain_text_is_html_escaped(authenticated_client):
-    with patch("mailforge.webmail_views._mail_client", return_value=FakeMailClient()):
+def test_inbox_search_is_forwarded_to_jmap(authenticated_client):
+    mail = FakeMailClient()
+    with patch("mailforge.webmail_views._mail_client", return_value=mail):
+        response = authenticated_client.get("/mail/inbox/?mailbox=inbox&q=Quarterly%20report")
+
+    assert response.status_code == 200
+    assert mail.last_search == "Quarterly report"
+    assert b"Search results" in response.content
+    assert b"Quarterly report" in response.content
+
+
+@pytest.mark.django_db
+def test_message_plain_text_is_html_escaped_and_open_marks_seen(authenticated_client):
+    mail = FakeMailClient()
+    with patch("mailforge.webmail_views._mail_client", return_value=mail):
         response = authenticated_client.get("/mail/messages/email-1/")
 
     assert response.status_code == 200
+    assert mail.seen_updates == [("email-1", True)]
     html = response.content.decode()
     assert "<script>alert('xss')</script>" not in html
     assert "&lt;script&gt;alert" in html
     assert "<b>not raw html</b>" not in html
     assert "&lt;b&gt;not raw html&lt;/b&gt;" in html
+    assert "Mark unread" in html
+
+
+@pytest.mark.django_db
+def test_mark_unread_updates_jmap_and_returns_to_inbox(authenticated_client):
+    mail = FakeMailClient()
+    with patch("mailforge.webmail_views._mail_client", return_value=mail):
+        response = authenticated_client.post("/mail/messages/email-1/unread/")
+
+    assert response.status_code == 302
+    assert response.url == "/mail/inbox/"
+    assert mail.seen_updates == [("email-1", False)]
 
 
 @pytest.mark.django_db

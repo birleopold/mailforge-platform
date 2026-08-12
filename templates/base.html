@@ -12,6 +12,8 @@
     <a class="brand" href="{% url 'dashboard' %}">MailForge</a>
     {% if user.is_authenticated %}
       <div class="account">
+        <a class="top-link" href="{% url 'dashboard' %}">Admin</a>
+        <a class="top-link" href="{% url 'webmail-home' %}">Mail</a>
         <span>{{ user.get_full_name|default:user.username }}</span>
         <form method="post" action="{% url 'logout' %}">
           {% csrf_token %}

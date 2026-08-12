@@ -7,6 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from apps.audit.models import AuditEvent
+from apps.domains.dns_readiness import check_domain_dns
 from apps.domains.models import Domain
 from apps.domains.provisioning import DomainProvisioningError, provision_domain
 from apps.domains.services import DomainVerificationTemporaryError, verify_domain_and_record
@@ -167,6 +168,20 @@ def domain_provision(request, tenant_slug, domain_pk):
         messages.error(request, "Stalwart is not configured or is temporarily unavailable.")
     else:
         messages.success(request, "Domain provisioned in Stalwart.")
+    return redirect("portal-domain", tenant_slug=tenant_slug, domain_pk=domain.pk)
+
+
+@login_required
+@require_POST
+def domain_dns_check(request, tenant_slug, domain_pk):
+    membership = _membership_or_404(request.user, tenant_slug)
+    _require_manager(membership)
+    domain = get_object_or_404(membership.tenant.domains, pk=domain_pk)
+    result = check_domain_dns(domain.pk, actor=request.user)
+    if result.ready:
+        messages.success(request, "Required DNS records are healthy.")
+    else:
+        messages.warning(request, "DNS is not fully ready yet. Review the checks below.")
     return redirect("portal-domain", tenant_slug=tenant_slug, domain_pk=domain.pk)
 
 

@@ -3,7 +3,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
-from apps.mailboxes.models import Mailbox, normalize_local_part
+from apps.mailboxes.models import Alias, Mailbox, normalize_local_part
 
 
 class MailboxSerializer(serializers.ModelSerializer):
@@ -45,3 +45,34 @@ class MailboxCreateSerializer(serializers.Serializer):
         except DjangoValidationError as exc:
             raise serializers.ValidationError(exc.messages) from exc
         return value
+
+
+class ForwarderSerializer(serializers.ModelSerializer):
+    email_address = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = Alias
+        fields = (
+            "id",
+            "email_address",
+            "local_part",
+            "destinations",
+            "active",
+            "created_at",
+        )
+        read_only_fields = fields
+
+
+class ForwarderCreateSerializer(serializers.Serializer):
+    local_part = serializers.CharField(max_length=64)
+    destinations = serializers.ListField(
+        child=serializers.EmailField(),
+        allow_empty=False,
+        max_length=settings.MAILFORGE_MAX_ALIAS_RECIPIENTS,
+    )
+
+    def validate_local_part(self, value):
+        try:
+            return normalize_local_part(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.messages) from exc

@@ -5,19 +5,24 @@ import httpx
 from integrations.stalwart.mail_jmap import JMAP_MAIL, JMAP_SUBMISSION, MailJMAPClient
 
 
+def _session_payload():
+    return {
+        "apiUrl": "https://mail.example.test/jmap",
+        "uploadUrl": "https://mail.example.test/upload/{accountId}",
+        "downloadUrl": (
+            "https://mail.example.test/download/{accountId}/{blobId}/{name}?type={type}"
+        ),
+        "accounts": {"u1": {"name": "alice@example.test"}},
+        "primaryAccounts": {JMAP_MAIL: "u1"},
+    }
+
+
 def test_discovers_session_with_user_bearer_token():
     seen = {}
 
     def handler(request):
         seen["authorization"] = request.headers.get("Authorization")
-        return httpx.Response(
-            200,
-            json={
-                "apiUrl": "https://mail.example.test/jmap",
-                "accounts": {"u1": {"name": "alice@example.test"}},
-                "primaryAccounts": {JMAP_MAIL: "u1"},
-            },
-        )
+        return httpx.Response(200, json=_session_payload())
 
     client = MailJMAPClient(
         access_token="user-token",
@@ -34,14 +39,7 @@ def test_lists_mailboxes_and_recent_email():
 
     def handler(request):
         if request.method == "GET":
-            return httpx.Response(
-                200,
-                json={
-                    "apiUrl": "https://mail.example.test/jmap",
-                    "accounts": {"u1": {"name": "alice@example.test"}},
-                    "primaryAccounts": {JMAP_MAIL: "u1"},
-                },
-            )
+            return httpx.Response(200, json=_session_payload())
 
         payload = json.loads(request.content)
         method = payload["methodCalls"][0][0]
@@ -112,20 +110,71 @@ def test_lists_mailboxes_and_recent_email():
     assert calls == ["Mailbox/query", "Mailbox/get", "Email/query", "Email/get"]
 
 
-def test_send_plaintext_creates_draft_then_submits_and_moves_to_sent():
+def test_blob_upload_and_download_use_session_binary_endpoints():
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        if request.url.path == "/.well-known/jmap":
+            return httpx.Response(200, json=_session_payload())
+        if request.url.path == "/upload/u1":
+            assert request.method == "POST"
+            assert request.headers["Content-Type"] == "application/pdf"
+            assert request.content == b"pdf-data"
+            return httpx.Response(
+                201,
+                json={
+                    "accountId": "u1",
+                    "blobId": "blob-1",
+                    "type": "application/pdf",
+                    "size": 8,
+                },
+            )
+        if request.url.path == "/download/u1/blob-1/report.pdf":
+            assert request.method == "GET"
+            assert request.url.params["type"] == "application/pdf"
+            return httpx.Response(
+                200,
+                content=b"pdf-data",
+                headers={"Content-Type": "application/pdf"},
+            )
+        raise AssertionError(f"Unexpected request: {request.method} {request.url}")
+
+    client = MailJMAPClient(
+        access_token="user-token",
+        base_url="https://mail.example.test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    uploaded = client.upload_blob(
+        data=b"pdf-data",
+        filename="report.pdf",
+        content_type="application/pdf",
+    )
+    downloaded, content_type = client.download_blob(
+        blob_id=uploaded["blobId"],
+        filename=uploaded["name"],
+        content_type=uploaded["type"],
+    )
+
+    assert uploaded == {
+        "blobId": "blob-1",
+        "type": "application/pdf",
+        "size": 8,
+        "name": "report.pdf",
+    }
+    assert downloaded == b"pdf-data"
+    assert content_type == "application/pdf"
+    assert all(request.headers.get("Authorization") == "Bearer user-token" for request in requests)
+
+
+def test_send_plaintext_creates_threaded_multipart_draft_then_submits():
     calls = []
     payloads = []
 
     def handler(request):
         if request.method == "GET":
-            return httpx.Response(
-                200,
-                json={
-                    "apiUrl": "https://mail.example.test/jmap",
-                    "accounts": {"u1": {"name": "alice@example.test"}},
-                    "primaryAccounts": {JMAP_MAIL: "u1"},
-                },
-            )
+            return httpx.Response(200, json=_session_payload())
 
         payload = json.loads(request.content)
         payloads.append(payload)
@@ -167,7 +216,25 @@ def test_send_plaintext_creates_draft_then_submits_and_moves_to_sent():
             assert created["mailboxIds"] == {"drafts": True}
             assert created["from"][0]["email"] == "alice@example.test"
             assert created["to"] == [{"email": "bob@example.net"}]
+            assert created["inReplyTo"] == ["message-1"]
+            assert created["references"] == ["root-message", "message-1"]
             assert created["bodyValues"]["body"]["value"].endswith("-- Alice\n")
+            assert created["bodyStructure"] == {
+                "type": "multipart/mixed",
+                "subParts": [
+                    {
+                        "type": "text/plain",
+                        "partId": "body",
+                        "disposition": "inline",
+                    },
+                    {
+                        "blobId": "blob-attachment",
+                        "type": "application/pdf",
+                        "name": "report.pdf",
+                        "disposition": "attachment",
+                    },
+                ],
+            }
             data = {
                 "accountId": "u1",
                 "oldState": "e1",
@@ -205,8 +272,17 @@ def test_send_plaintext_creates_draft_then_submits_and_moves_to_sent():
     result = client.send_plaintext(
         identity_id="identity-1",
         to=[{"email": "bob@example.net"}],
-        subject="Hello",
+        subject="Re: Hello",
         body="Message body",
+        attachments=[
+            {
+                "blobId": "blob-attachment",
+                "type": "application/pdf",
+                "name": "report.pdf",
+            }
+        ],
+        in_reply_to=["message-1"],
+        references=["root-message", "message-1"],
     )
 
     assert result == {"emailId": "email-1", "submissionId": "submission-1"}
@@ -225,14 +301,7 @@ def test_search_uses_jmap_text_filter_with_mailbox():
 
     def handler(request):
         if request.method == "GET":
-            return httpx.Response(
-                200,
-                json={
-                    "apiUrl": "https://mail.example.test/jmap",
-                    "accounts": {"u1": {"name": "alice@example.test"}},
-                    "primaryAccounts": {JMAP_MAIL: "u1"},
-                },
-            )
+            return httpx.Response(200, json=_session_payload())
         payload = json.loads(request.content)
         method, args, call_id = payload["methodCalls"][0]
         if method == "Email/query":
@@ -259,23 +328,16 @@ def test_search_uses_jmap_text_filter_with_mailbox():
     assert result["emails"] == []
 
 
-def test_set_seen_uses_keyword_patch():
-    captured_update = {}
+def test_seen_and_answered_use_keyword_patches():
+    captured_updates = []
 
     def handler(request):
         if request.method == "GET":
-            return httpx.Response(
-                200,
-                json={
-                    "apiUrl": "https://mail.example.test/jmap",
-                    "accounts": {"u1": {"name": "alice@example.test"}},
-                    "primaryAccounts": {JMAP_MAIL: "u1"},
-                },
-            )
+            return httpx.Response(200, json=_session_payload())
         payload = json.loads(request.content)
         method, args, call_id = payload["methodCalls"][0]
         assert method == "Email/set"
-        captured_update.update(args["update"])
+        captured_updates.append(args["update"])
         data = {
             "accountId": "u1",
             "oldState": "e1",
@@ -291,5 +353,9 @@ def test_set_seen_uses_keyword_patch():
     )
 
     client.set_seen("email-1", seen=False)
+    client.set_answered("email-1")
 
-    assert captured_update == {"email-1": {"keywords/$seen": None}}
+    assert captured_updates == [
+        {"email-1": {"keywords/$seen": None}},
+        {"email-1": {"keywords/$answered": True}},
+    ]

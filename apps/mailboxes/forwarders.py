@@ -15,6 +15,10 @@ class ForwarderProvisioningError(RuntimeError):
     pass
 
 
+class ForwarderLifecycleError(RuntimeError):
+    pass
+
+
 @dataclass(frozen=True)
 class ForwarderProvisioningResult:
     alias: Alias
@@ -75,7 +79,7 @@ def provision_forwarder(
                 active=False,
             )
         except IntegrityError as exc:
-            raise ForwarderProvisioningError("That forwarder already exists.") from exc
+            raise ForwarderProvisioningError("That forwarder already exists or is reserved.") from exc
 
     try:
         resolved_backend = backend or get_mail_backend()
@@ -104,3 +108,70 @@ def provision_forwarder(
         },
     )
     return ForwarderProvisioningResult(alias=alias)
+
+
+def _active_forwarder(alias_id: int) -> Alias:
+    alias = Alias.objects.select_related("domain__tenant").get(pk=alias_id)
+    if not alias.active:
+        raise ForwarderLifecycleError("This forwarder has already been deleted.")
+    if not alias.backend_identifier:
+        raise ForwarderLifecycleError("This forwarder is not provisioned in the mail backend.")
+    return alias
+
+
+def update_forwarder(
+    alias_id: int,
+    *,
+    destinations,
+    backend=None,
+    actor=None,
+) -> Alias:
+    alias = _active_forwarder(alias_id)
+    try:
+        destinations = normalize_destinations(destinations)
+    except ForwarderProvisioningError as exc:
+        raise ForwarderLifecycleError(str(exc)) from exc
+    if alias.email_address in destinations:
+        raise ForwarderLifecycleError("A forwarder cannot forward to itself.")
+
+    resolved_backend = backend or get_mail_backend()
+    resolved_backend.update_alias(
+        alias_id=alias.backend_identifier,
+        destinations=destinations,
+    )
+    Alias.objects.filter(pk=alias.pk, active=True).update(destinations=destinations)
+    alias.refresh_from_db()
+    AuditEvent.objects.create(
+        tenant=alias.domain.tenant,
+        actor=actor,
+        action="forwarder.updated",
+        target_type="alias",
+        target_id=str(alias.pk),
+        metadata={
+            "address": alias.email_address,
+            "destinations": destinations,
+            "backend_identifier": alias.backend_identifier,
+        },
+    )
+    return alias
+
+
+def delete_forwarder(alias_id: int, *, backend=None, actor=None) -> Alias:
+    alias = _active_forwarder(alias_id)
+    resolved_backend = backend or get_mail_backend()
+    resolved_backend.delete_alias(alias_id=alias.backend_identifier)
+    Alias.objects.filter(pk=alias.pk, active=True).update(active=False)
+    alias.refresh_from_db()
+    AuditEvent.objects.create(
+        tenant=alias.domain.tenant,
+        actor=actor,
+        action="forwarder.deleted",
+        target_type="alias",
+        target_id=str(alias.pk),
+        metadata={
+            "address": alias.email_address,
+            "destinations": alias.destinations,
+            "backend_identifier": alias.backend_identifier,
+        },
+    )
+    return alias

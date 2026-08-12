@@ -11,7 +11,13 @@ from apps.domains.dns_readiness import check_domain_dns
 from apps.domains.models import Domain
 from apps.domains.provisioning import DomainProvisioningError, provision_domain
 from apps.domains.services import DomainVerificationTemporaryError, verify_domain_and_record
-from apps.mailboxes.forwarders import ForwarderProvisioningError, provision_forwarder
+from apps.mailboxes.forwarders import (
+    ForwarderLifecycleError,
+    ForwarderProvisioningError,
+    delete_forwarder,
+    provision_forwarder,
+    update_forwarder,
+)
 from apps.mailboxes.models import Mailbox
 from apps.mailboxes.services import (
     MailboxLifecycleError,
@@ -29,6 +35,8 @@ from integrations.stalwart.client import StalwartAPIError
 from mailforge.forms import (
     DomainCreateForm,
     ForwarderCreateForm,
+    ForwarderDeleteForm,
+    ForwarderUpdateForm,
     MailboxCreateForm,
     MailboxDeleteForm,
     MailboxPasswordResetForm,
@@ -63,6 +71,12 @@ def _portal_mailbox(membership, domain_pk, mailbox_pk):
         pk=mailbox_pk,
     )
     return domain, mailbox
+
+
+def _portal_forwarder(membership, domain_pk, forwarder_pk):
+    domain = get_object_or_404(membership.tenant.domains, pk=domain_pk)
+    forwarder = get_object_or_404(domain.aliases.filter(active=True), pk=forwarder_pk)
+    return domain, forwarder
 
 
 def _domain_redirect(tenant_slug, domain_pk):
@@ -160,7 +174,6 @@ def domain_detail(request, tenant_slug, domain_pk):
             "mailboxes": mailboxes,
             "forwarders": forwarders,
             "mailbox_form": MailboxCreateForm(),
-            "password_reset_form": MailboxPasswordResetForm(),
             "forwarder_form": ForwarderCreateForm(),
             "can_manage": membership.role in MANAGE_ROLES,
         },
@@ -349,4 +362,50 @@ def forwarder_create(request, tenant_slug, domain_pk):
         messages.error(request, "Stalwart is not configured or is temporarily unavailable.")
     else:
         messages.success(request, f"Forwarder {result.alias.email_address} created.")
+    return _domain_redirect(tenant_slug, domain.pk)
+
+
+@login_required
+@require_POST
+def forwarder_update(request, tenant_slug, domain_pk, forwarder_pk):
+    membership = _membership_or_404(request.user, tenant_slug)
+    _require_manager(membership)
+    domain, forwarder = _portal_forwarder(membership, domain_pk, forwarder_pk)
+    form = ForwarderUpdateForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "Please enter at least one valid destination address.")
+        return _domain_redirect(tenant_slug, domain.pk)
+    try:
+        updated = update_forwarder(
+            forwarder.pk,
+            destinations=form.cleaned_data["destinations"],
+            actor=request.user,
+        )
+    except ForwarderLifecycleError as exc:
+        messages.error(request, str(exc))
+    except BACKEND_ERRORS:
+        messages.error(request, "Stalwart is temporarily unavailable; the forwarder was not changed.")
+    else:
+        messages.success(request, f"Forwarder {updated.email_address} updated.")
+    return _domain_redirect(tenant_slug, domain.pk)
+
+
+@login_required
+@require_POST
+def forwarder_delete(request, tenant_slug, domain_pk, forwarder_pk):
+    membership = _membership_or_404(request.user, tenant_slug)
+    _require_manager(membership)
+    domain, forwarder = _portal_forwarder(membership, domain_pk, forwarder_pk)
+    form = ForwarderDeleteForm(request.POST, expected_email=forwarder.email_address)
+    if not form.is_valid():
+        messages.error(request, "Forwarder deletion confirmation did not match the address.")
+        return _domain_redirect(tenant_slug, domain.pk)
+    try:
+        delete_forwarder(forwarder.pk, actor=request.user)
+    except ForwarderLifecycleError as exc:
+        messages.error(request, str(exc))
+    except BACKEND_ERRORS:
+        messages.error(request, "Stalwart is temporarily unavailable; the forwarder was not deleted.")
+    else:
+        messages.success(request, f"Forwarder {forwarder.email_address} deleted and address reserved.")
     return _domain_redirect(tenant_slug, domain.pk)

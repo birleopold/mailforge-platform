@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}Webmail · MailForge{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div class="eyebrow">WEBMAIL</div>
+  <h1>Open your mailbox</h1>
+  <p class="muted">MailForge connects to Stalwart using OAuth and JMAP. Your mailbox password is entered only on the mail server's authorization screen, not into MailForge.</p>
+</div>
+
+<section class="card narrow-card">
+  <h2>Connect securely</h2>
+  <p>Continue to the Stalwart authorization page to choose and authenticate the mailbox you want to use.</p>
+  <div class="success-panel">
+    <strong>Passwordless handoff for MailForge</strong>
+    <div class="small">The webmail session uses a user-scoped access token. The Stalwart management API key cannot be used to read mail.</div>
+  </div>
+  <form method="post" action="{% url 'webmail-connect' %}" class="top-gap-sm">
+    {% csrf_token %}
+    <button class="button primary" type="submit">Connect mailbox</button>
+  </form>
+</section>
+{% endblock %}

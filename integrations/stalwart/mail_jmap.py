@@ -189,6 +189,7 @@ class MailJMAPClient:
         self,
         *,
         mailbox_id: str | None = None,
+        search_text: str | None = None,
         limit: int = 50,
         position: int = 0,
     ) -> dict[str, Any]:
@@ -202,8 +203,13 @@ class MailJMAPClient:
             "limit": limit,
             "calculateTotal": True,
         }
+        filters: dict[str, Any] = {}
         if mailbox_id:
-            query["filter"] = {"inMailbox": mailbox_id}
+            filters["inMailbox"] = mailbox_id
+        if search_text and search_text.strip():
+            filters["text"] = search_text.strip()[:500]
+        if filters:
+            query["filter"] = filters
 
         responses = self.call([["Email/query", query, "q1"]])
         query_data = responses[0][1]
@@ -293,6 +299,30 @@ class MailJMAPClient:
         if not items:
             raise MailJMAPError("Email not found.")
         return items[0]
+
+    def set_seen(self, email_id: str, *, seen: bool) -> None:
+        account_id = self.primary_mail_account_id()
+        responses = self.call(
+            [
+                [
+                    "Email/set",
+                    {
+                        "accountId": account_id,
+                        "update": {
+                            email_id: {
+                                "keywords/$seen": True if seen else None,
+                            }
+                        },
+                    },
+                    "seen-update",
+                ]
+            ]
+        )
+        data = responses[0][1]
+        error = (data.get("notUpdated") or {}).get(email_id)
+        if error:
+            error_type = error.get("type", "unknown")
+            raise MailJMAPError(f"Message seen state could not be updated: {error_type}.")
 
     def send_plaintext(
         self,

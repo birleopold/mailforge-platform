@@ -9,8 +9,10 @@ from django.http import Http404
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 
+from apps.domains.models import Domain
 from integrations.stalwart.mail_jmap import MailJMAPClient, MailJMAPError
 from integrations.stalwart.oauth import StalwartOAuthClient, StalwartOAuthError, create_pkce_flow
+from mailforge.forms import ComposeForm
 from mailforge.webmail_auth import (
     WebmailSessionError,
     clear_oauth_token,
@@ -77,6 +79,26 @@ def _plain_text_body(email: dict) -> str:
         if value:
             chunks.append(value)
     return "\n\n".join(chunks).strip()
+
+
+def _concrete_identities(client: MailJMAPClient):
+    return [
+        identity
+        for identity in client.list_identities()
+        if identity.get("id") and identity.get("email") and not identity["email"].startswith("*@")
+    ]
+
+
+def _identity_domain_ready(identity: dict) -> bool:
+    email = identity.get("email", "")
+    if "@" not in email:
+        return False
+    domain_name = email.rsplit("@", 1)[1].lower()
+    return Domain.objects.filter(
+        name=domain_name,
+        sending_enabled=True,
+        status=Domain.Status.ACTIVE,
+    ).exists()
 
 
 @login_required
@@ -214,6 +236,60 @@ def webmail_message(request, email_id):
             "mail_account": account,
             "email": email,
             "plain_text_body": _plain_text_body(email) or email.get("preview", ""),
+        },
+    )
+
+
+@login_required
+def webmail_compose(request):
+    client = _mail_client(request)
+    if client is None:
+        return redirect("webmail-home")
+
+    try:
+        _, account = _account_context(client)
+        identities = _concrete_identities(client)
+    except MailJMAPError:
+        messages.error(request, "Sending identities could not be loaded from the mail server.")
+        return redirect("webmail-inbox")
+
+    if not identities:
+        messages.error(request, "This mailbox has no concrete sending identity.")
+        return redirect("webmail-inbox")
+
+    form = ComposeForm(request.POST or None, identities=identities)
+    if request.method == "POST" and form.is_valid():
+        identity = next(
+            (item for item in identities if item["id"] == form.cleaned_data["identity_id"]),
+            None,
+        )
+        if identity is None or not _identity_domain_ready(identity):
+            form.add_error(
+                "identity_id",
+                "Sending is disabled for this domain until MailForge DNS readiness checks pass.",
+            )
+        else:
+            try:
+                client.send_plaintext(
+                    identity_id=identity["id"],
+                    to=form.cleaned_data["to"],
+                    cc=form.cleaned_data["cc"],
+                    bcc=form.cleaned_data["bcc"],
+                    subject=form.cleaned_data["subject"],
+                    body=form.cleaned_data["body"],
+                )
+            except MailJMAPError as exc:
+                form.add_error(None, str(exc))
+            else:
+                messages.success(request, "Message submitted for delivery.")
+                return redirect("webmail-inbox")
+
+    return render(
+        request,
+        "webmail/compose.html",
+        {
+            "mail_account": account,
+            "form": form,
         },
     )
 

@@ -26,6 +26,7 @@ urlpatterns = [
         name="webmail-oauth-callback",
     ),
     path("mail/inbox/", webmail_views.webmail_inbox, name="webmail-inbox"),
+    path("mail/compose/", webmail_views.webmail_compose, name="webmail-compose"),
     path(
         "mail/messages/<str:email_id>/",
         webmail_views.webmail_message,

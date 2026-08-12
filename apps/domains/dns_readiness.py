@@ -15,6 +15,7 @@ from django.utils import timezone
 
 from apps.audit.models import AuditEvent
 from apps.domains.models import Domain
+from apps.domains.sending_policy import sync_domain_sending_policy
 from integrations.factory import (
     MailBackendConfigurationError,
     UnsupportedMailBackend,
@@ -343,10 +344,34 @@ def check_domain_dns(
     domain = Domain.objects.select_related("tenant").get(pk=domain_id)
     zone_file = _refresh_dns_zone_file(domain, backend=backend)
     dkim_records = extract_dkim_records(zone_file, domain.name)
-    result = inspect_domain_dns(
+    dns_result = inspect_domain_dns(
         domain.name,
         resolver=resolver,
         dkim_records=dkim_records,
+    )
+
+    should_backend_send = bool(
+        dns_result.ready
+        and domain.verified_at
+        and domain.backend_identifier
+        and domain.status not in {Domain.Status.SUSPENDED, Domain.Status.DECOMMISSIONED}
+    )
+    policy = sync_domain_sending_policy(
+        domain,
+        enabled=should_backend_send,
+        backend=backend,
+    )
+    checks = dict(dns_result.checks)
+    checks["smtp_policy"] = {
+        "status": "pass" if policy.success else "fail",
+        "required": True,
+        "expected": "emailSend enabled" if should_backend_send else "emailSend disabled",
+        "observed": list(policy.failed_addresses),
+        "detail": policy.detail,
+    }
+    result = DNSReadinessResult(
+        ready=dns_result.ready and policy.success,
+        checks=checks,
     )
     now = timezone.now()
 

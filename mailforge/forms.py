@@ -4,6 +4,7 @@ from django import forms
 from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 
 from apps.domains.models import normalize_domain_name
 from apps.mailboxes.forwarders import normalize_destinations
@@ -62,3 +63,49 @@ class ForwarderCreateForm(forms.Form):
             return normalize_destinations(values)
         except RuntimeError as exc:
             raise ValidationError(str(exc)) from exc
+
+
+def _parse_compose_addresses(value: str) -> list[dict[str, str]]:
+    addresses = []
+    seen = set()
+    for raw in re.split(r"[\s,;]+", value.strip()):
+        email = raw.strip().lower()
+        if not email:
+            continue
+        try:
+            validate_email(email)
+        except ValidationError as exc:
+            raise ValidationError(f"Invalid email address: {email}") from exc
+        if email not in seen:
+            addresses.append({"email": email})
+            seen.add(email)
+    return addresses
+
+
+class ComposeForm(forms.Form):
+    identity_id = forms.ChoiceField(label="From")
+    to = forms.CharField(label="To", help_text="Separate multiple addresses with commas.")
+    cc = forms.CharField(label="Cc", required=False)
+    bcc = forms.CharField(label="Bcc", required=False)
+    subject = forms.CharField(max_length=998, required=False)
+    body = forms.CharField(widget=forms.Textarea(attrs={"rows": 14}), required=False)
+
+    def __init__(self, *args, identities=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        identities = identities or []
+        self.fields["identity_id"].choices = [
+            (identity["id"], f"{identity.get('name') or identity['email']} <{identity['email']}>")
+            for identity in identities
+        ]
+
+    def clean_to(self):
+        addresses = _parse_compose_addresses(self.cleaned_data["to"])
+        if not addresses:
+            raise ValidationError("Enter at least one recipient.")
+        return addresses
+
+    def clean_cc(self):
+        return _parse_compose_addresses(self.cleaned_data.get("cc", ""))
+
+    def clean_bcc(self):
+        return _parse_compose_addresses(self.cleaned_data.get("bcc", ""))

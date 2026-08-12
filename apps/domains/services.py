@@ -4,6 +4,11 @@ from dataclasses import dataclass
 
 import dns.exception
 import dns.resolver
+from django.db import transaction
+from django.utils import timezone
+
+from apps.audit.models import AuditEvent
+from apps.domains.models import Domain
 
 
 class DomainVerificationTemporaryError(RuntimeError):
@@ -14,6 +19,7 @@ class DomainVerificationTemporaryError(RuntimeError):
 class VerificationResult:
     verified: bool
     observed_values: tuple[str, ...]
+    already_verified: bool = False
 
 
 class DomainOwnershipVerifier:
@@ -47,3 +53,37 @@ class DomainOwnershipVerifier:
 
         values = tuple(self._txt_value(record) for record in answer)
         return VerificationResult(domain.verification_record_value in values, values)
+
+
+def verify_domain_and_record(domain_id: int, *, verifier=None) -> VerificationResult:
+    """Verify a domain and persist the successful transition exactly once."""
+    domain = Domain.objects.select_related("tenant").get(pk=domain_id)
+    if domain.verified_at is not None:
+        return VerificationResult(True, (), already_verified=True)
+
+    verifier = verifier or DomainOwnershipVerifier()
+    result = verifier.verify(domain)
+    if not result.verified:
+        return result
+
+    with transaction.atomic():
+        locked = Domain.objects.select_for_update().select_related("tenant").get(pk=domain_id)
+        if locked.verified_at is None:
+            locked.status = Domain.Status.VERIFIED
+            locked.verified_at = timezone.now()
+            locked.save(update_fields=["status", "verified_at"])
+            AuditEvent.objects.create(
+                tenant=locked.tenant,
+                action="domain.ownership_verified",
+                target_type="domain",
+                target_id=str(locked.pk),
+                metadata={
+                    "domain": locked.name,
+                    "record_name": locked.verification_record_name,
+                    "observed_values": list(result.observed_values),
+                },
+            )
+        else:
+            return VerificationResult(True, result.observed_values, already_verified=True)
+
+    return result

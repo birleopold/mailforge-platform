@@ -14,6 +14,7 @@ dependencies = [
   "celery>=5.5",
   "redis>=5.2",
   "httpx>=0.28",
+  "dnspython>=2.8,<3",
   "dj-database-url>=2.3",
   "gunicorn>=23",
 ]

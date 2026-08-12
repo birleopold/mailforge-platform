@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 
 from apps.domains.api import MANAGE_ROLES, tenant_membership_for_request
 from apps.mailboxes.forwarders import ForwarderProvisioningError, provision_forwarder
-from apps.mailboxes.models import Alias, Mailbox
+from apps.mailboxes.models import Mailbox
 from apps.mailboxes.serializers import (
     ForwarderCreateSerializer,
     ForwarderSerializer,

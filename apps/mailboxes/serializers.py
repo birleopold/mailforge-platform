@@ -6,6 +6,14 @@ from rest_framework import serializers
 from apps.mailboxes.models import Alias, Mailbox, normalize_local_part
 
 
+def _validate_password(value):
+    try:
+        validate_password(value)
+    except DjangoValidationError as exc:
+        raise serializers.ValidationError(exc.messages) from exc
+    return value
+
+
 class MailboxSerializer(serializers.ModelSerializer):
     email_address = serializers.CharField(read_only=True)
 
@@ -40,11 +48,14 @@ class MailboxCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError(exc.messages) from exc
 
     def validate_password(self, value):
-        try:
-            validate_password(value)
-        except DjangoValidationError as exc:
-            raise serializers.ValidationError(exc.messages) from exc
-        return value
+        return _validate_password(value)
+
+
+class MailboxPasswordResetSerializer(serializers.Serializer):
+    password = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    def validate_password(self, value):
+        return _validate_password(value)
 
 
 class ForwarderSerializer(serializers.ModelSerializer):

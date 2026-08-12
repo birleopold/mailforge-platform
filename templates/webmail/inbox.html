@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block title %}Inbox · MailForge{% endblock %}
+{% block content %}
+<div class="mail-layout">
+  <aside class="mail-sidebar card">
+    <div class="eyebrow">WEBMAIL</div>
+    <h2>{{ mail_account.name|default:"Mailbox" }}</h2>
+    <a class="mail-folder {% if not selected_mailbox %}active{% endif %}" href="{% url 'webmail-inbox' %}">All mail <span>{{ total }}</span></a>
+    {% for mailbox in mailboxes %}
+      <a class="mail-folder {% if selected_mailbox == mailbox.id %}active{% endif %}" href="{% url 'webmail-inbox' %}?mailbox={{ mailbox.id|urlencode }}">
+        <span>{{ mailbox.name }}</span>
+        {% if mailbox.unreadEmails %}<strong>{{ mailbox.unreadEmails }}</strong>{% endif %}
+      </a>
+    {% endfor %}
+    <form method="post" action="{% url 'webmail-disconnect' %}" class="top-gap">
+      {% csrf_token %}
+      <button class="button" type="submit">Disconnect mailbox</button>
+    </form>
+  </aside>
+
+  <section class="card mail-main">
+    <div class="section-heading">
+      <div>
+        <div class="eyebrow">MESSAGES</div>
+        <h1>Inbox</h1>
+      </div>
+      <span class="pill">{{ total }}</span>
+    </div>
+
+    {% if mail_error %}
+      <div class="empty">Mail could not be loaded from Stalwart. Try again after the server connection is restored.</div>
+    {% elif emails %}
+      <div class="mail-list">
+        {% for email in emails %}
+          <a class="mail-row {% if '$seen' not in email.keywords %}unread{% endif %}" href="{% url 'webmail-message' email_id=email.id %}">
+            <div class="mail-sender">
+              {% for sender in email.from %}
+                {{ sender.name|default:sender.email }}{% if not forloop.last %}, {% endif %}
+              {% empty %}
+                Unknown sender
+              {% endfor %}
+            </div>
+            <div class="mail-summary">
+              <strong>{{ email.subject|default:"(no subject)" }}</strong>
+              <span>{{ email.preview }}</span>
+            </div>
+            <div class="mail-meta">
+              {% if email.hasAttachment %}<span title="Attachment">📎</span>{% endif %}
+              <time>{{ email.receivedAt|slice:":10" }}</time>
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty">No messages in this mailbox.</div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

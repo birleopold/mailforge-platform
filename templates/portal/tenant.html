@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block title %}{{ tenant.name }} · MailForge{% endblock %}
+{% block content %}
+<a class="back" href="{% url 'dashboard' %}">← Organizations</a>
+<div class="page-heading">
+  <div>
+    <div class="eyebrow">{{ membership.get_role_display }}</div>
+    <h1>{{ tenant.name }}</h1>
+    <p class="muted">Plan: {{ tenant.plan_code }} · Status: {{ tenant.get_status_display }}</p>
+  </div>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Domains</h2>
+    {% if domains %}
+      <div class="list">
+        {% for domain in domains %}
+          <a class="list-row" href="{% url 'portal-domain' tenant_slug=tenant.slug domain_pk=domain.pk %}">
+            <div>
+              <strong>{{ domain.name }}</strong>
+              <div class="muted small">Backend: {{ domain.backend }}</div>
+            </div>
+            <span class="pill status-{{ domain.status }}">{{ domain.get_status_display }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty">No domains have been added to this organization.</div>
+    {% endif %}
+  </section>
+
+  {% if can_manage %}
+  <section class="card">
+    <h2>Add domain</h2>
+    <p class="muted">MailForge will require a DNS TXT challenge before the domain can be provisioned.</p>
+    <form method="post" action="{% url 'portal-domain-create' tenant_slug=tenant.slug %}" class="stacked-form">
+      {% csrf_token %}
+      {{ domain_form.as_p }}
+      <button class="button primary" type="submit">Add domain</button>
+    </form>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

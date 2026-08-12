@@ -87,3 +87,11 @@ class ForwarderCreateSerializer(serializers.Serializer):
             return normalize_local_part(value)
         except DjangoValidationError as exc:
             raise serializers.ValidationError(exc.messages) from exc
+
+
+class ForwarderUpdateSerializer(serializers.Serializer):
+    destinations = serializers.ListField(
+        child=serializers.EmailField(),
+        allow_empty=False,
+        max_length=settings.MAILFORGE_MAX_ALIAS_RECIPIENTS,
+    )

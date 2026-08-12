@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block title %}Compose · MailForge{% endblock %}
+{% block content %}
+<a class="back" href="{% url 'webmail-inbox' %}">← Inbox</a>
+<div class="page-heading">
+  <div class="eyebrow">WEBMAIL</div>
+  <h1>New message</h1>
+  <p class="muted">Messages are submitted through the connected mailbox's JMAP sending identity. MailForge blocks sending until the domain readiness gate is active.</p>
+</div>
+
+<section class="card compose-card">
+  <form method="post" class="stacked-form">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <div class="grid two compose-top-grid">
+      <div>{{ form.identity_id.label_tag }}{{ form.identity_id }}{{ form.identity_id.errors }}</div>
+      <div>{{ form.to.label_tag }}{{ form.to }}{{ form.to.errors }}{% if form.to.help_text %}<span class="helptext">{{ form.to.help_text }}</span>{% endif %}</div>
+    </div>
+    <details class="compose-copy-fields">
+      <summary>Add Cc/Bcc</summary>
+      <div class="grid two top-gap-sm">
+        <div>{{ form.cc.label_tag }}{{ form.cc }}{{ form.cc.errors }}</div>
+        <div>{{ form.bcc.label_tag }}{{ form.bcc }}{{ form.bcc.errors }}</div>
+      </div>
+    </details>
+    <div class="top-gap-sm">{{ form.subject.label_tag }}{{ form.subject }}{{ form.subject.errors }}</div>
+    <div class="top-gap-sm">{{ form.body.label_tag }}{{ form.body }}{{ form.body.errors }}</div>
+    <div class="compose-actions">
+      <button class="button primary" type="submit">Send message</button>
+      <a class="button" href="{% url 'webmail-inbox' %}">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

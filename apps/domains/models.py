@@ -56,6 +56,8 @@ class Domain(models.Model):
     backend = models.CharField(max_length=32, default="stalwart")
     backend_identifier = models.CharField(max_length=255, blank=True)
     sending_enabled = models.BooleanField(default=False)
+    dns_checks = models.JSONField(default=dict, blank=True)
+    dns_checked_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def clean(self):

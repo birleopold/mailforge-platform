@@ -9,6 +9,7 @@ from apps.domains.dns_readiness import (
     inspect_domain_dns,
 )
 from apps.domains.models import Domain
+from apps.mailboxes.models import Mailbox
 from apps.tenants.models import Tenant
 
 
@@ -45,10 +46,14 @@ class FakeBackend:
     def __init__(self, zone_file):
         self.zone_file = zone_file
         self.calls = []
+        self.policy_calls = []
 
     def get_domain(self, domain_id):
         self.calls.append(domain_id)
         return {"id": domain_id, "name": "example.com", "dnsZoneFile": self.zone_file}
+
+    def set_account_sending_enabled(self, *, account_id, enabled):
+        self.policy_calls.append((account_id, enabled))
 
 
 def dkim_records():
@@ -196,6 +201,51 @@ def test_dns_gate_enables_and_disables_sending():
     assert domain.status == Domain.Status.DNS_CONFIGURATION
     assert domain.sending_enabled is False
     assert AuditEvent.objects.filter(action="domain.sending_readiness_changed").count() == 2
+
+
+@pytest.mark.django_db
+@override_settings(
+    MAILFORGE_MAIL_HOSTNAME="mail.mailforge.test",
+    MAILFORGE_MAIL_IPV4="203.0.113.10",
+)
+def test_dns_gate_reconciles_stalwart_email_send_permission():
+    tenant = Tenant.objects.create(name="Acme", slug="dns-policy")
+    domain = Domain.objects.create(
+        tenant=tenant,
+        name="example.com",
+        status=Domain.Status.DNS_CONFIGURATION,
+        verified_at=timezone.now(),
+        backend_identifier="domain-1",
+        dns_zone_file=DKIM_ZONE,
+    )
+    Mailbox.objects.create(
+        domain=domain,
+        local_part="alice",
+        status=Mailbox.Status.ACTIVE,
+        backend_identifier="account-1",
+    )
+    backend = FakeBackend(DKIM_ZONE)
+
+    first = check_domain_dns(
+        domain.pk,
+        resolver=FakeResolver(healthy_records()),
+        backend=backend,
+    )
+    assert first.ready is True
+    assert first.checks["smtp_policy"]["status"] == "pass"
+    assert backend.policy_calls == [("account-1", True)]
+
+    broken = healthy_records()
+    broken[("_dmarc.example.com", "TXT")] = []
+    second = check_domain_dns(
+        domain.pk,
+        resolver=FakeResolver(broken),
+        backend=backend,
+    )
+
+    assert second.ready is False
+    assert second.checks["smtp_policy"]["status"] == "pass"
+    assert backend.policy_calls == [("account-1", True), ("account-1", False)]
 
 
 @pytest.mark.django_db

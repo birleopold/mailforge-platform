@@ -1,20 +1,14 @@
 # Domain onboarding
 
-## User experience
+## Step 1 — Add domain
 
-### Step 1 — Add domain
-User enters `example.com`.
+Customer enters a fully-qualified domain such as `example.com`.
 
-Reject:
+MailForge normalizes the name, rejects invalid values and enforces global uniqueness.
 
-- malformed names;
-- domains already owned by another tenant;
-- reserved/internal domains;
-- obvious public suffixes.
+## Step 2 — Prove ownership
 
-### Step 2 — Prove ownership
-
-MailForge displays:
+MailForge generates a TXT challenge:
 
 ```text
 Type: TXT
@@ -22,34 +16,31 @@ Name: _mailforge-verify.example.com
 Value: mailforge-verification=<random-token>
 ```
 
-Verification runs asynchronously.
+A Celery task checks DNS asynchronously. Missing records are treated as not-yet-verified; temporary DNS resolver failures are retried.
 
-### Step 3 — Provision backend
+## Step 3 — Provision in Stalwart
 
-After ownership is confirmed:
+After verification, MailForge provisions a Stalwart Domain through the management JMAP API and stores the backend identifier.
 
-- create domain in mailcow;
-- apply quotas;
-- create/obtain DKIM data;
-- save backend identifiers.
+Customers do not receive Stalwart administrator access.
 
-### Step 4 — DNS checklist
+## Step 4 — DNS checklist
 
-Show each record with:
+MailForge should display required/observed values for:
 
-- host/name;
-- record type;
-- expected value;
-- observed value;
-- status;
-- last checked time.
+- MX;
+- SPF;
+- DKIM;
+- DMARC;
+- mail host A/AAAA;
+- PTR/rDNS guidance;
+- autoconfig/autodiscover;
+- MTA-STS and TLS-RPT when enabled.
 
-### Step 5 — Activate
+## Step 5 — Activate mailboxes
 
-Inbound can be enabled once routing is correct.
+Mailbox creation is allowed after domain ownership is verified. Outbound sending may be held until required deliverability/safety checks are satisfied.
 
-Outbound should require the minimum safety set selected by policy (for example SPF + DKIM and valid server routing).
+## Step 6 — Continuous health
 
-### Step 6 — Continuous health
-
-Re-check DNS on a schedule and warn rather than immediately destroying service when a temporary DNS failure occurs.
+Periodically re-check DNS and certificate/routing state. Temporary DNS failures should create warnings rather than immediately deleting or disabling customer data.

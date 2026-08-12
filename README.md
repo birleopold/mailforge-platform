@@ -72,9 +72,14 @@ The current `main` branch includes:
 - verified-domain provisioning into Stalwart through management JMAP;
 - mailbox list/create service and API with configurable quotas;
 - mailbox passwords treated as write-only provisioning input and not stored in Django models;
+- browser/API mailbox suspend and reactivate controls;
+- targeted mailbox password reset that does not persist the password in MailForge;
+- permanent mailbox backend deletion with an inactive MailForge tombstone so the old address remains reserved;
 - forwarding addresses backed by Stalwart mailing lists;
+- forwarder destination update and confirmed deletion through both REST and the browser portal;
+- deleted forwarder addresses retained as inactive MailForge tombstones rather than silently recycled;
 - protection against mailbox/forwarder address collisions and self-forwarding loops;
-- audit events for privileged provisioning actions;
+- audit events for privileged provisioning and lifecycle actions;
 - Django admin operator console.
 
 ### DNS and sending readiness
@@ -129,7 +134,9 @@ The current `main` branch includes:
 
 MailForge now enforces sending readiness in both the webmail UI and Stalwart-managed mailbox accounts. If required DNS health is not ready, MailForge applies an explicit Stalwart `emailSend` denial to active MailForge-managed users; when readiness becomes healthy again, the user-role sending permission is restored. The periodic Celery reconciliation repeats these checks so DNS degradation does not depend only on a manual portal action.
 
-This backend policy still needs live validation against the exact Stalwart version used on the production VPS before public onboarding. Abuse rate limits, anomaly detection and emergency suspension workflows also remain required before open signup.
+Mailbox suspension removes inherited account permissions while preserving the account and stored mail; reactivation restores the account while still respecting the domain's current sending readiness. Password-reset input is sent to Stalwart and is not stored in MailForge. Permanent mailbox and forwarder deletions leave reserved tombstones in MailForge to avoid accidentally assigning a historical address to a different person.
+
+These backend controls still need live validation against the exact Stalwart version used on the production VPS before public onboarding. Abuse rate limits, anomaly detection and emergency domain suspension workflows also remain required before open signup.
 
 ## Domain onboarding
 
@@ -182,7 +189,7 @@ Examples are under `deploy/systemd/` and `deploy/nginx/`.
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
-The next major milestone is a real Ubuntu/Stalwart VPS integration with a real domain, followed by MTA-STS/TLS-RPT, mailbox lifecycle controls, safe HTML rendering, abuse/rate controls and real deliverability tests to major providers.
+The next major milestone is a real Ubuntu/Stalwart VPS integration with a real domain, followed by MTA-STS/TLS-RPT, safe HTML rendering, emergency suspension, abuse/rate controls and real deliverability tests to major providers.
 
 ## Security warning
 

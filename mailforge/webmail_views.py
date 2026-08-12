@@ -181,13 +181,18 @@ def webmail_inbox(request):
         return redirect("webmail-home")
 
     selected_mailbox = request.GET.get("mailbox") or None
+    search_text = (request.GET.get("q") or "").strip()[:500]
     try:
         _, account = _account_context(client)
         mailboxes = client.list_mailboxes()
         mailbox_ids = {mailbox.get("id") for mailbox in mailboxes}
         if selected_mailbox and selected_mailbox not in mailbox_ids:
             raise Http404
-        messages_page = client.list_emails(mailbox_id=selected_mailbox, limit=50)
+        messages_page = client.list_emails(
+            mailbox_id=selected_mailbox,
+            search_text=search_text,
+            limit=50,
+        )
     except MailJMAPError:
         messages.error(request, "The mailbox server is temporarily unavailable.")
         return render(
@@ -199,6 +204,7 @@ def webmail_inbox(request):
                 "emails": [],
                 "total": 0,
                 "selected_mailbox": selected_mailbox,
+                "search_text": search_text,
                 "mail_error": True,
             },
             status=503,
@@ -213,6 +219,7 @@ def webmail_inbox(request):
             "emails": messages_page["emails"],
             "total": messages_page["total"],
             "selected_mailbox": selected_mailbox,
+            "search_text": search_text,
             "mail_error": False,
         },
     )
@@ -226,6 +233,10 @@ def webmail_message(request, email_id):
     try:
         _, account = _account_context(client)
         email = client.get_email(email_id)
+        keywords = email.get("keywords") or {}
+        if "$seen" not in keywords:
+            client.set_seen(email_id, seen=True)
+            email["keywords"] = {**keywords, "$seen": True}
     except MailJMAPError:
         raise Http404 from None
 
@@ -238,6 +249,21 @@ def webmail_message(request, email_id):
             "plain_text_body": _plain_text_body(email) or email.get("preview", ""),
         },
     )
+
+
+@login_required
+@require_POST
+def webmail_mark_unread(request, email_id):
+    client = _mail_client(request)
+    if client is None:
+        return redirect("webmail-home")
+    try:
+        client.set_seen(email_id, seen=False)
+    except MailJMAPError:
+        messages.error(request, "The message could not be marked unread.")
+    else:
+        messages.success(request, "Message marked unread.")
+    return redirect("webmail-inbox")
 
 
 @login_required

@@ -6,24 +6,31 @@
 - [x] Create Django starter scaffold.
 - [x] Remove Docker dependency from the design.
 - [x] Select native Stalwart backend.
-- [ ] Build a non-production Stalwart lab on Ubuntu.
+- [x] Add native Windows/Ubuntu quick-start and service examples.
+- [ ] Build a non-production Stalwart lab on an actual Ubuntu VPS.
 - [ ] Confirm VPS outbound port 25 and PTR/rDNS support.
-- [ ] Connect a test domain.
+- [ ] Connect a real test domain end-to-end.
 
 ## Phase 1 — Core control plane
-- [ ] Portal authentication and tenant-scoped API.
-- [ ] Tenant and membership CRUD.
+- [x] Portal authentication and tenant-scoped API foundation.
+- [x] Tenant create/list/detail with owner membership and audit.
+- [x] Domain create/list/detail with tenant isolation.
 - [x] Domain ownership TXT verification core.
 - [x] Retry-safe verification task.
-- [x] Audit event for verified ownership.
-- [x] Stalwart JMAP adapter foundation.
-- [ ] Idempotent domain provisioning.
-- [ ] Mailbox CRUD and lifecycle.
-- [ ] Alias CRUD.
-- [ ] Quota enforcement.
+- [x] Audit events for domain/tenant provisioning actions.
+- [x] Stalwart management JMAP adapter foundation.
+- [x] Idempotent domain provisioning service and API/portal action.
+- [x] Mailbox list/create foundation with quotas and tenant isolation.
+- [x] Forwarder list/create foundation using Stalwart mailing lists.
+- [x] Browser management portal for organizations/domains/forwarders.
+- [ ] Mailbox suspend/delete/password-reset lifecycle.
+- [ ] Forwarder update/delete lifecycle.
+- [ ] Tenant membership invitation/role-management UI.
+- [ ] Plan-specific quota/entitlement engine.
 - [ ] Emergency suspend controls.
 
 ## Phase 2 — DNS and deliverability
+- [ ] Read Stalwart DNS recommendations for each provisioned domain.
 - [ ] DNS status dashboard.
 - [ ] MX/SPF/DKIM/DMARC checks.
 - [ ] PTR/rDNS check.
@@ -32,7 +39,8 @@
 - [ ] Queue/reputation monitoring.
 
 ## Phase 3 — MailForge Webmail
-- [ ] JMAP session/authentication integration.
+- [ ] Design mailbox-user authentication/SSO without storing mailbox passwords in Django.
+- [ ] JMAP session discovery and authenticated mailbox access.
 - [ ] Inbox/message list.
 - [ ] Conversation/thread view.
 - [ ] Compose/reply/forward.

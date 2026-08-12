@@ -81,10 +81,18 @@ class StalwartClient(MailBackend):
         return data
 
     @staticmethod
-    def _raise_not_updated(data: dict[str, Any], account_id: str, operation: str):
-        error = (data.get("notUpdated") or {}).get(account_id)
+    def _raise_not_updated(data: dict[str, Any], object_id: str, operation: str):
+        error = (data.get("notUpdated") or {}).get(object_id)
         if error:
             raise StalwartAPIError(f"{operation} failed: {error}")
+
+    @staticmethod
+    def _raise_not_destroyed(data: dict[str, Any], object_id: str, operation: str):
+        error = (data.get("notDestroyed") or {}).get(object_id)
+        if error:
+            raise StalwartAPIError(f"{operation} failed: {error}")
+        if object_id not in set(data.get("destroyed") or []):
+            raise StalwartAPIError(f"Stalwart did not confirm {operation.lower()}.")
 
     def create_domain(self, *, domain, max_mailboxes, quota_mb):
         del max_mailboxes, quota_mb  # MailForge enforces v1 tenant limits in its own DB.
@@ -217,11 +225,7 @@ class StalwartClient(MailBackend):
     def delete_account(self, *, account_id):
         account_id = str(account_id)
         data = self._call("x:Account/set", {"destroy": [account_id]})
-        error = (data.get("notDestroyed") or {}).get(account_id)
-        if error:
-            raise StalwartAPIError(f"Account deletion failed: {error}")
-        if account_id not in set(data.get("destroyed") or []):
-            raise StalwartAPIError("Stalwart did not confirm account deletion.")
+        self._raise_not_destroyed(data, account_id, "Account deletion")
         return data
 
     def create_alias(self, *, address, destinations):
@@ -245,3 +249,24 @@ class StalwartClient(MailBackend):
         if not created or "id" not in created:
             raise StalwartAPIError(f"Alias was not created: {data}")
         return created
+
+    def update_alias(self, *, alias_id, destinations):
+        alias_id = str(alias_id)
+        data = self._call(
+            "x:MailingList/set",
+            {
+                "update": {
+                    alias_id: {
+                        "recipients": list(destinations),
+                    }
+                }
+            },
+        )
+        self._raise_not_updated(data, alias_id, "Forwarder update")
+        return data
+
+    def delete_alias(self, *, alias_id):
+        alias_id = str(alias_id)
+        data = self._call("x:MailingList/set", {"destroy": [alias_id]})
+        self._raise_not_destroyed(data, alias_id, "Forwarder deletion")
+        return data

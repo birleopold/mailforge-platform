@@ -23,8 +23,8 @@
 - [x] Mailbox list/create foundation with quotas and tenant isolation.
 - [x] Forwarder list/create foundation using Stalwart mailing lists.
 - [x] Browser management portal for organizations/domains/forwarders.
-- [ ] Mailbox suspend/delete/password-reset lifecycle.
-- [ ] Forwarder update/delete lifecycle.
+- [x] Mailbox suspend/reactivate/password-reset/delete lifecycle with audit and reserved tombstones.
+- [x] Forwarder destination update/delete lifecycle with audit and reserved tombstones.
 - [ ] Tenant membership invitation/role-management UI.
 - [ ] Plan-specific quota/entitlement engine.
 - [ ] Emergency suspend controls.

@@ -1,0 +1,18 @@
+[Unit]
+Description=MailForge Celery worker
+After=network.target redis-server.service postgresql.service
+
+[Service]
+Type=simple
+User=mailforge
+Group=mailforge
+WorkingDirectory=/opt/mailforge-platform
+EnvironmentFile=/opt/mailforge-platform/.env
+ExecStart=/opt/mailforge-platform/.venv/bin/celery -A mailforge worker --loglevel=INFO
+Restart=on-failure
+RestartSec=5
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

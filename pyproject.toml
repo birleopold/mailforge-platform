@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mailforge-platform"
+version = "0.1.0"
+description = "Django control plane for multi-tenant, multi-domain email hosting"
+requires-python = ">=3.12"
+dependencies = [
+  "Django>=5.2,<5.3",
+  "djangorestframework>=3.15",
+  "psycopg[binary]>=3.2",
+  "celery>=5.5",
+  "redis>=5.2",
+  "httpx>=0.28",
+  "dj-database-url>=2.3",
+  "gunicorn>=23",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "pytest-django>=4.9",
+  "ruff>=0.9",
+]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "mailforge.settings"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mailforge*", "apps*", "integrations*"]

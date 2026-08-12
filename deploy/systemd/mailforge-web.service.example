@@ -1,0 +1,18 @@
+[Unit]
+Description=MailForge Django web application
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=mailforge
+Group=mailforge
+WorkingDirectory=/opt/mailforge-platform
+EnvironmentFile=/opt/mailforge-platform/.env
+ExecStart=/opt/mailforge-platform/.venv/bin/gunicorn mailforge.wsgi:application --bind 127.0.0.1:8000 --workers 3 --timeout 60
+Restart=on-failure
+RestartSec=5
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

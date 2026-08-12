@@ -76,6 +76,14 @@ class MailboxDeleteForm(forms.Form):
         return value
 
 
+def _clean_forwarder_destinations(raw: str) -> list[str]:
+    values = [item for item in re.split(r"[\s,;]+", raw) if item]
+    try:
+        return normalize_destinations(values)
+    except RuntimeError as exc:
+        raise ValidationError(str(exc)) from exc
+
+
 class ForwarderCreateForm(forms.Form):
     local_part = forms.CharField(max_length=64, label="Forwarder name")
     destinations = forms.CharField(
@@ -87,12 +95,31 @@ class ForwarderCreateForm(forms.Form):
         return normalize_local_part(self.cleaned_data["local_part"])
 
     def clean_destinations(self):
-        raw = self.cleaned_data["destinations"]
-        values = [item for item in re.split(r"[\s,;]+", raw) if item]
-        try:
-            return normalize_destinations(values)
-        except RuntimeError as exc:
-            raise ValidationError(str(exc)) from exc
+        return _clean_forwarder_destinations(self.cleaned_data["destinations"])
+
+
+class ForwarderUpdateForm(forms.Form):
+    destinations = forms.CharField(
+        widget=forms.Textarea(attrs={"rows": 3}),
+        help_text="Separate destination addresses with commas or new lines.",
+    )
+
+    def clean_destinations(self):
+        return _clean_forwarder_destinations(self.cleaned_data["destinations"])
+
+
+class ForwarderDeleteForm(forms.Form):
+    confirm_email = forms.EmailField(label="Type the forwarder address to confirm")
+
+    def __init__(self, *args, expected_email: str, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.expected_email = expected_email.lower()
+
+    def clean_confirm_email(self):
+        value = self.cleaned_data["confirm_email"].strip().lower()
+        if value != self.expected_email:
+            raise ValidationError("The confirmation address does not match this forwarder.")
+        return value
 
 
 def _parse_compose_addresses(value: str) -> list[dict[str, str]]:

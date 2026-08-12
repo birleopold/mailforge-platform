@@ -80,12 +80,17 @@ The current `main` branch includes:
 ### DNS and sending readiness
 
 - persisted DNS readiness snapshots per domain;
+- Stalwart-generated DNS zone discovery and refresh;
 - MX validation against the configured MailForge mail hostname;
 - SPF presence and duplicate-SPF detection;
+- exact DKIM validation against Stalwart's current generated `_domainkey` TXT records, including rotated selectors and split TXT chunks;
 - DMARC validation;
 - optional production PTR/rDNS enforcement when the server public IPv4 is configured;
 - automatic transition between DNS configuration and active states;
-- application-level sending gate that disables MailForge webmail sending when required DNS health is lost;
+- backend-enforced sending gate using Stalwart's per-account `emailSend` permission;
+- new mailboxes created with sending already disabled when their domain is not ready;
+- existing MailForge-managed mailboxes synchronized whenever readiness is checked;
+- periodic Celery readiness reconciliation, configurable with `MAILFORGE_DNS_RECONCILE_MINUTES` (15 minutes by default);
 - audit events when sending readiness changes.
 
 ### MailForge webmail MVP
@@ -102,6 +107,11 @@ The current `main` branch includes:
 - server-side JMAP mail search;
 - validated compose form with To/Cc/Bcc;
 - sending identity restricted to identities returned by Stalwart;
+- reply, reply-all and forward with recipient de-duplication and self-address exclusion;
+- JMAP `In-Reply-To`/`References` threading metadata and answered-state updates;
+- attachment upload through the JMAP upload endpoint with per-file and total limits;
+- authenticated attachment download resolved from message metadata rather than arbitrary blob ids;
+- original attachment reuse when forwarding;
 - plain-text draft creation through `Email/set`;
 - delivery through `EmailSubmission/set`;
 - successful submissions moved from Drafts to Sent;
@@ -110,14 +120,16 @@ The current `main` branch includes:
 ### Native deployment
 
 - native Stalwart Ubuntu installer helper;
-- native Gunicorn/Celery systemd service examples;
+- native Gunicorn, Celery worker and Celery beat systemd service examples;
 - Nginx reverse-proxy example;
 - Windows and Ubuntu no-Docker quick start;
 - GitHub Actions lint, Django checks, migration-drift check and pytest suite.
 
 ## Current security boundary
 
-The MailForge webmail and control-plane sending path is gated by MailForge's DNS readiness state. **Direct authenticated SMTP submission to Stalwart is not yet synchronized with that Django-side gate.** Before public onboarding, Stalwart-side submission permissions/rules and abuse-rate controls must be wired to the same suspension/readiness decisions so customers cannot bypass the control plane by using SMTP directly.
+MailForge now enforces sending readiness in both the webmail UI and Stalwart-managed mailbox accounts. If required DNS health is not ready, MailForge applies an explicit Stalwart `emailSend` denial to active MailForge-managed users; when readiness becomes healthy again, the user-role sending permission is restored. The periodic Celery reconciliation repeats these checks so DNS degradation does not depend only on a manual portal action.
+
+This backend policy still needs live validation against the exact Stalwart version used on the production VPS before public onboarding. Abuse rate limits, anomaly detection and emergency suspension workflows also remain required before open signup.
 
 ## Domain onboarding
 
@@ -126,13 +138,11 @@ The MailForge webmail and control-plane sending path is gated by MailForge's DNS
 3. Verify ownership from the portal/API.
 4. Provision the verified domain in Stalwart.
 5. Configure the public mail hostname/IP in MailForge production settings.
-6. Publish the required MX, SPF and DMARC records plus provider-managed PTR/rDNS.
+6. Publish the MX, SPF, Stalwart-generated DKIM and DMARC records plus provider-managed PTR/rDNS.
 7. Run **Check DNS readiness** from the domain screen.
-8. Create mailboxes and forwarders.
+8. Create mailboxes and forwarders. Mailboxes created before readiness remain unable to send.
 9. Connect a mailbox to MailForge Webmail through Stalwart OAuth.
-10. Sending from MailForge becomes available only when the domain is active and the readiness gate is healthy.
-
-DKIM discovery/validation and stronger backend-level sending enforcement are still upcoming deliverability work.
+10. Sending becomes available only after the required DNS checks and Stalwart mailbox-policy synchronization succeed.
 
 ## Quick local start on Windows
 
@@ -161,7 +171,8 @@ Recommended native services:
 - Django + Gunicorn — MailForge control plane and webmail;
 - PostgreSQL — application database;
 - Redis — Celery broker/cache;
-- Celery — background verification/provisioning work;
+- Celery worker — background domain/mail operations;
+- Celery beat — periodic DNS/readiness and Stalwart send-policy reconciliation;
 - Nginx — reverse proxy for the Django portal;
 - systemd — process management.
 
@@ -171,8 +182,8 @@ Examples are under `deploy/systemd/` and `deploy/nginx/`.
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
-The next major milestone is a real Ubuntu/Stalwart VPS integration with a real domain, followed by DKIM/deliverability hardening, attachment handling, reply/forward, HTML sanitization and SMTP-side enforcement of MailForge suspension/readiness policies.
+The next major milestone is a real Ubuntu/Stalwart VPS integration with a real domain, followed by MTA-STS/TLS-RPT, mailbox lifecycle controls, safe HTML rendering, abuse/rate controls and real deliverability tests to major providers.
 
 ## Security warning
 
-Self-hosted email is reputation-sensitive infrastructure. Do not open unrestricted public registration or bulk sending before rate limits, backend-enforced abuse controls, monitoring, backup/restore drills and deliverability checks are complete.
+Self-hosted email is reputation-sensitive infrastructure. Do not open unrestricted public registration or bulk sending before rate limits, backend-enforced abuse controls, monitoring, backup/restore drills and real-domain deliverability checks are complete.

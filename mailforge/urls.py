@@ -33,6 +33,29 @@ urlpatterns = [
         name="webmail-message",
     ),
     path(
+        "mail/messages/<str:source_id>/reply/",
+        webmail_views.webmail_compose,
+        {"mode": "reply"},
+        name="webmail-reply",
+    ),
+    path(
+        "mail/messages/<str:source_id>/reply-all/",
+        webmail_views.webmail_compose,
+        {"mode": "reply-all"},
+        name="webmail-reply-all",
+    ),
+    path(
+        "mail/messages/<str:source_id>/forward/",
+        webmail_views.webmail_compose,
+        {"mode": "forward"},
+        name="webmail-forward",
+    ),
+    path(
+        "mail/messages/<str:email_id>/attachments/<int:attachment_index>/",
+        webmail_views.webmail_attachment,
+        name="webmail-attachment",
+    ),
+    path(
         "mail/messages/<str:email_id>/unread/",
         webmail_views.webmail_mark_unread,
         name="webmail-mark-unread",

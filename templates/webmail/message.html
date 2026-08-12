@@ -17,6 +17,12 @@
     </div>
   </div>
 
+  <div class="message-action-bar">
+    <a class="button primary" href="{% url 'webmail-reply' source_id=email.id %}">Reply</a>
+    <a class="button" href="{% url 'webmail-reply-all' source_id=email.id %}">Reply all</a>
+    <a class="button" href="{% url 'webmail-forward' source_id=email.id %}">Forward</a>
+  </div>
+
   <div class="message-headers">
     <div><strong>From</strong>
       <span>
@@ -32,6 +38,15 @@
         {% empty %}—{% endfor %}
       </span>
     </div>
+    {% if email.cc %}
+      <div><strong>Cc</strong>
+        <span>
+          {% for recipient in email.cc %}
+            {{ recipient.name|default:recipient.email }} &lt;{{ recipient.email }}&gt;{% if not forloop.last %}, {% endif %}
+          {% endfor %}
+        </span>
+      </div>
+    {% endif %}
     <div><strong>Received</strong><span>{{ email.receivedAt }}</span></div>
   </div>
 
@@ -42,12 +57,16 @@
     <h3>Attachments</h3>
     <div class="list compact">
       {% for attachment in email.attachments %}
-        <div class="list-row static">
+        <div class="list-row static attachment-row">
           <div>
             <strong>{{ attachment.name|default:"Attachment" }}</strong>
-            <div class="muted small">{{ attachment.type }} · {{ attachment.size }} bytes</div>
+            <div class="muted small">{{ attachment.type|default:"application/octet-stream" }} · {{ attachment.size }} bytes</div>
           </div>
-          <span class="pill">Download pending</span>
+          {% if attachment.blobId %}
+            <a class="button" href="{% url 'webmail-attachment' email_id=email.id attachment_index=forloop.counter0 %}">Download</a>
+          {% else %}
+            <span class="pill">Unavailable</span>
+          {% endif %}
         </div>
       {% endfor %}
     </div>

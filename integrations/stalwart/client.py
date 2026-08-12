@@ -26,6 +26,14 @@ def _mailbox_permissions(*, sending_enabled: bool) -> dict[str, Any]:
     }
 
 
+def _suspended_permissions() -> dict[str, Any]:
+    return {
+        "@type": "Replace",
+        "enabledPermissions": {},
+        "disabledPermissions": {},
+    }
+
+
 class StalwartClient(MailBackend):
     """Small JMAP management client for a native Stalwart installation."""
 
@@ -71,6 +79,12 @@ class StalwartClient(MailBackend):
         if response_method == "error" or response_method.endswith("/error"):
             raise StalwartAPIError(str(data))
         return data
+
+    @staticmethod
+    def _raise_not_updated(data: dict[str, Any], account_id: str, operation: str):
+        error = (data.get("notUpdated") or {}).get(account_id)
+        if error:
+            raise StalwartAPIError(f"{operation} failed: {error}")
 
     def create_domain(self, *, domain, max_mailboxes, quota_mb):
         del max_mailboxes, quota_mb  # MailForge enforces v1 tenant limits in its own DB.
@@ -157,25 +171,58 @@ class StalwartClient(MailBackend):
         return created
 
     def set_account_sending_enabled(self, *, account_id, enabled):
+        account_id = str(account_id)
         data = self._call(
             "x:Account/set",
             {
                 "update": {
-                    str(account_id): {
+                    account_id: {
                         "permissions": _mailbox_permissions(sending_enabled=bool(enabled))
                     }
                 }
             },
         )
-        not_updated = (data.get("notUpdated") or {}).get(str(account_id))
-        if not_updated:
-            raise StalwartAPIError(
-                f"Account sending policy was not updated: {not_updated}"
-            )
+        self._raise_not_updated(data, account_id, "Account sending policy update")
         return data
 
-    def suspend_mailbox(self, *, email):
-        raise NotImplementedError("Mailbox suspension is part of the lifecycle-management milestone.")
+    def set_account_suspended(self, *, account_id, suspended, sending_enabled=False):
+        account_id = str(account_id)
+        permissions = (
+            _suspended_permissions()
+            if suspended
+            else _mailbox_permissions(sending_enabled=bool(sending_enabled))
+        )
+        data = self._call(
+            "x:Account/set",
+            {"update": {account_id: {"permissions": permissions}}},
+        )
+        self._raise_not_updated(data, account_id, "Account suspension update")
+        return data
+
+    def reset_account_password(self, *, account_id, password):
+        account_id = str(account_id)
+        data = self._call(
+            "x:Account/set",
+            {
+                "update": {
+                    account_id: {
+                        "credentials/0/secret": password,
+                    }
+                }
+            },
+        )
+        self._raise_not_updated(data, account_id, "Password reset")
+        return data
+
+    def delete_account(self, *, account_id):
+        account_id = str(account_id)
+        data = self._call("x:Account/set", {"destroy": [account_id]})
+        error = (data.get("notDestroyed") or {}).get(account_id)
+        if error:
+            raise StalwartAPIError(f"Account deletion failed: {error}")
+        if account_id not in set(data.get("destroyed") or []):
+            raise StalwartAPIError("Stalwart did not confirm account deletion.")
+        return data
 
     def create_alias(self, *, address, destinations):
         local_part, domain = address.rsplit("@", 1)

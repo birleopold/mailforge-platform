@@ -1,0 +1,19 @@
+[Unit]
+Description=MailForge Celery beat scheduler
+After=network.target redis-server.service postgresql.service
+
+[Service]
+Type=simple
+User=mailforge
+Group=mailforge
+WorkingDirectory=/opt/mailforge-platform
+EnvironmentFile=/opt/mailforge-platform/.env
+ExecStart=/opt/mailforge-platform/.venv/bin/celery -A mailforge beat --loglevel=INFO --schedule=/var/lib/mailforge/celerybeat-schedule
+Restart=on-failure
+RestartSec=5
+PrivateTmp=true
+NoNewPrivileges=true
+StateDirectory=mailforge
+
+[Install]
+WantedBy=multi-user.target

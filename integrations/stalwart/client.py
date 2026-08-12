@@ -70,8 +70,8 @@ class StalwartClient(MailBackend):
                 "create": {
                     "mailforge": {
                         "name": domain,
-                        "aliases": [],
-                        "certificateManagement": {"@type": "Automatic"},
+                        "aliases": {},
+                        "certificateManagement": {"@type": "Manual"},
                         "dkimManagement": {"@type": "Automatic"},
                         "dnsManagement": {"@type": "Manual"},
                         "subAddressing": {"@type": "Enabled"},
@@ -103,14 +103,14 @@ class StalwartClient(MailBackend):
                         "name": local_part,
                         "domainId": domain_id,
                         "description": display_name or email,
-                        "credentials": [
-                            {"@type": "Password", "secret": password, "allowedIps": []}
-                        ],
-                        "memberGroupIds": [],
+                        "credentials": {
+                            "0": {"@type": "Password", "secret": password}
+                        },
+                        "memberGroupIds": {},
                         "roles": {"@type": "User"},
                         "permissions": {"@type": "Inherit"},
                         "quotas": {"maxDiskQuota": quota_mb * 1024 * 1024},
-                        "aliases": [],
+                        "aliases": {},
                         "encryptionAtRest": {"@type": "Disabled"},
                     }
                 }
@@ -125,4 +125,23 @@ class StalwartClient(MailBackend):
         raise NotImplementedError("Mailbox suspension is part of the lifecycle-management milestone.")
 
     def create_alias(self, *, address, destinations):
-        raise NotImplementedError("Alias provisioning is part of the mailbox lifecycle milestone.")
+        local_part, domain = address.rsplit("@", 1)
+        domain_id = self.get_domain_id(domain)
+        data = self._call(
+            "x:MailingList/set",
+            {
+                "create": {
+                    "mailforge": {
+                        "name": local_part,
+                        "domainId": domain_id,
+                        "description": f"MailForge forwarder for {address}",
+                        "recipients": list(destinations),
+                        "aliases": {},
+                    }
+                }
+            },
+        )
+        created = data.get("created", {}).get("mailforge")
+        if not created or "id" not in created:
+            raise StalwartAPIError(f"Alias was not created: {data}")
+        return created

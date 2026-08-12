@@ -17,6 +17,7 @@ dependencies = [
   "dnspython>=2.8,<3",
   "dj-database-url>=2.3",
   "python-dotenv>=1.1",
+  "cryptography>=45",
   "gunicorn>=23",
 ]
 

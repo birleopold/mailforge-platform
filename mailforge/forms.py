@@ -82,6 +82,22 @@ def _parse_compose_addresses(value: str) -> list[dict[str, str]]:
     return addresses
 
 
+class MultipleFileInput(forms.ClearableFileInput):
+    allow_multiple_selected = True
+
+
+class MultipleFileField(forms.FileField):
+    widget = MultipleFileInput
+
+    def clean(self, data, initial=None):
+        single_file_clean = super().clean
+        if not data:
+            return []
+        if isinstance(data, (list, tuple)):
+            return [single_file_clean(item, initial) for item in data]
+        return [single_file_clean(data, initial)]
+
+
 class ComposeForm(forms.Form):
     identity_id = forms.ChoiceField(label="From")
     to = forms.CharField(label="To", help_text="Separate multiple addresses with commas.")
@@ -89,6 +105,14 @@ class ComposeForm(forms.Form):
     bcc = forms.CharField(label="Bcc", required=False)
     subject = forms.CharField(max_length=998, required=False)
     body = forms.CharField(widget=forms.Textarea(attrs={"rows": 14}), required=False)
+    attachments = MultipleFileField(
+        required=False,
+        label="Attachments",
+        help_text=(
+            f"Up to {settings.MAILFORGE_MAX_ATTACHMENT_MB} MB per file and "
+            f"{settings.MAILFORGE_MAX_TOTAL_ATTACHMENT_MB} MB total."
+        ),
+    )
 
     def __init__(self, *args, identities=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -109,3 +133,20 @@ class ComposeForm(forms.Form):
 
     def clean_bcc(self):
         return _parse_compose_addresses(self.cleaned_data.get("bcc", ""))
+
+    def clean_attachments(self):
+        files = self.cleaned_data.get("attachments") or []
+        max_file_bytes = settings.MAILFORGE_MAX_ATTACHMENT_MB * 1024 * 1024
+        max_total_bytes = settings.MAILFORGE_MAX_TOTAL_ATTACHMENT_MB * 1024 * 1024
+        total = 0
+        for uploaded in files:
+            if uploaded.size > max_file_bytes:
+                raise ValidationError(
+                    f"{uploaded.name} exceeds the {settings.MAILFORGE_MAX_ATTACHMENT_MB} MB per-file limit."
+                )
+            total += uploaded.size
+        if total > max_total_bytes:
+            raise ValidationError(
+                f"Attachments exceed the {settings.MAILFORGE_MAX_TOTAL_ATTACHMENT_MB} MB total limit."
+            )
+        return files

@@ -4,11 +4,17 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
 
+from apps.domains.models import Domain
+from apps.tenants.models import Tenant
+
 
 User = get_user_model()
 
 
 class FakeMailClient:
+    def __init__(self):
+        self.sent = None
+
     def session(self):
         return {
             "accounts": {"u1": {"name": "alice@example.test"}},
@@ -25,6 +31,16 @@ class FakeMailClient:
                 "name": "Inbox",
                 "role": "inbox",
                 "unreadEmails": 1,
+            }
+        ]
+
+    def list_identities(self):
+        return [
+            {
+                "id": "identity-1",
+                "name": "Alice",
+                "email": "alice@example.test",
+                "textSignature": "",
             }
         ]
 
@@ -68,6 +84,10 @@ class FakeMailClient:
             "preview": "Hello",
         }
 
+    def send_plaintext(self, **kwargs):
+        self.sent = kwargs
+        return {"emailId": "email-2", "submissionId": "submission-1"}
+
 
 @pytest.fixture
 def authenticated_client(db):
@@ -75,6 +95,17 @@ def authenticated_client(db):
     client = Client()
     client.force_login(user)
     return client
+
+
+def create_mail_domain(*, ready):
+    tenant = Tenant.objects.create(name="Mail Tenant", slug="mail-tenant")
+    return Domain.objects.create(
+        tenant=tenant,
+        name="example.test",
+        status=Domain.Status.ACTIVE if ready else Domain.Status.DNS_CONFIGURATION,
+        sending_enabled=ready,
+        backend_identifier="domain-1",
+    )
 
 
 def test_webmail_requires_django_login():
@@ -103,6 +134,7 @@ def test_inbox_renders_user_scoped_jmap_messages(authenticated_client):
     assert b"Welcome to MailForge" in response.content
     assert b"Your first secure message" in response.content
     assert b"Inbox" in response.content
+    assert b"Compose" in response.content
 
 
 @pytest.mark.django_db
@@ -116,3 +148,52 @@ def test_message_plain_text_is_html_escaped(authenticated_client):
     assert "&lt;script&gt;alert" in html
     assert "<b>not raw html</b>" not in html
     assert "&lt;b&gt;not raw html&lt;/b&gt;" in html
+
+
+@pytest.mark.django_db
+def test_compose_sends_only_when_identity_domain_is_ready(authenticated_client):
+    create_mail_domain(ready=True)
+    mail = FakeMailClient()
+
+    with patch("mailforge.webmail_views._mail_client", return_value=mail):
+        response = authenticated_client.post(
+            "/mail/compose/",
+            {
+                "identity_id": "identity-1",
+                "to": "Bob@Example.NET, bob@example.net",
+                "cc": "",
+                "bcc": "audit@example.org",
+                "subject": "Hello",
+                "body": "Secure body",
+            },
+        )
+
+    assert response.status_code == 302
+    assert response.url == "/mail/inbox/"
+    assert mail.sent["identity_id"] == "identity-1"
+    assert mail.sent["to"] == [{"email": "bob@example.net"}]
+    assert mail.sent["bcc"] == [{"email": "audit@example.org"}]
+    assert mail.sent["subject"] == "Hello"
+
+
+@pytest.mark.django_db
+def test_compose_blocks_domain_that_failed_readiness_gate(authenticated_client):
+    create_mail_domain(ready=False)
+    mail = FakeMailClient()
+
+    with patch("mailforge.webmail_views._mail_client", return_value=mail):
+        response = authenticated_client.post(
+            "/mail/compose/",
+            {
+                "identity_id": "identity-1",
+                "to": "bob@example.net",
+                "cc": "",
+                "bcc": "",
+                "subject": "Blocked",
+                "body": "This should not leave MailForge.",
+            },
+        )
+
+    assert response.status_code == 200
+    assert mail.sent is None
+    assert b"Sending is disabled for this domain" in response.content

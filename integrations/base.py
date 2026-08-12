@@ -23,7 +23,15 @@ class MailBackend(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def suspend_mailbox(self, *, email):
+    def set_account_suspended(self, *, account_id, suspended, sending_enabled=False):
+        raise NotImplementedError
+
+    @abstractmethod
+    def reset_account_password(self, *, account_id, password):
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_account(self, *, account_id):
         raise NotImplementedError
 
     @abstractmethod

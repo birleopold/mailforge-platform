@@ -32,6 +32,11 @@ urlpatterns = [
         webmail_views.webmail_message,
         name="webmail-message",
     ),
+    path(
+        "mail/messages/<str:email_id>/unread/",
+        webmail_views.webmail_mark_unread,
+        name="webmail-mark-unread",
+    ),
     path("mail/disconnect/", webmail_views.webmail_disconnect, name="webmail-disconnect"),
     path("portal/tenants/create/", portal_views.tenant_create, name="portal-tenant-create"),
     path(

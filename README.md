@@ -14,9 +14,9 @@ Each customer/domain stays logically separated in MailForge, while the actual ma
 
 ## Why Stalwart
 
-Stalwart runs as a native Linux service and provides SMTP, IMAP, JMAP, CalDAV, CardDAV, WebDAV, spam/phishing filtering, DKIM and modern account/domain management APIs. MailForge uses Django as the customer-facing control plane and will progressively build its own Gmail-style web client over JMAP.
+Stalwart runs as a native Linux service and provides SMTP, IMAP, JMAP, CalDAV, CardDAV, WebDAV, filtering, DKIM and modern account/domain management APIs. MailForge uses Django as the customer-facing control plane and will progressively build its own Gmail-style web client over JMAP.
 
-Docker is not required by this project.
+**Docker is not required by this project.**
 
 ## Architecture
 
@@ -27,12 +27,12 @@ Browser / Mobile
 +---------------------------+
 | MailForge Django          |
 |                           |
-| Customer portal           |
-| Gmail-style web UI        |
+| Browser control portal    |
+| Tenant-scoped REST API    |
 | Tenants / domains         |
-| Billing / plans           |
+| Mailboxes / forwarders    |
 | DNS verification          |
-| Audit / abuse controls    |
+| Audit / quotas            |
 +------------+--------------+
              |
              | JMAP / HTTPS
@@ -50,83 +50,82 @@ Browser / Mobile
 
 ## Important tenancy rule
 
-Stalwart Community Edition can host multiple domains and accounts, but its native **Tenant** object is an Enterprise feature. MailForge therefore owns tenant authorization in Django for the free/community deployment: customers do not receive Stalwart administrator access; every management action is checked in Django and executed through a restricted service API credential.
+Stalwart Community Edition can host multiple domains and accounts, but its native **Tenant** object is an Enterprise feature. MailForge therefore owns customer authorization in Django for the free/community deployment: customers do not receive Stalwart administrator access; management actions are tenant-scoped in Django and executed through a service credential.
 
 For customers that later require hard infrastructure isolation, MailForge can support a dedicated Stalwart instance/host or an Enterprise-backed tenant mode.
 
+## What works now
+
+The current `main` branch includes:
+
+- Django login and browser management portal;
+- isolated organizations/tenants and owner memberships;
+- tenant-scoped REST API;
+- domain normalization and global uniqueness;
+- DNS TXT ownership verification;
+- retry-safe Celery verification jobs;
+- verified-domain provisioning into Stalwart through management JMAP;
+- mailbox list/create service and API with configurable quotas;
+- mailbox passwords treated as write-only provisioning input and not stored in Django models;
+- forwarding addresses backed by Stalwart mailing lists;
+- protection against mailbox/forwarder address collisions and self-forwarding loops;
+- audit events for privileged provisioning actions;
+- Django admin operator console;
+- native Stalwart Ubuntu installer helper;
+- native Gunicorn/Celery systemd service examples and Nginx reverse-proxy example;
+- GitHub Actions lint, Django checks, migration-drift check and pytest suite.
+
+The full Gmail-style inbox, compose UI, search, contacts, calendar and file interface are **future phases**, not completed features yet.
+
 ## Domain onboarding
 
-1. Customer adds a domain to MailForge.
-2. MailForge generates a unique TXT ownership token.
-3. Customer publishes the TXT record in DNS.
-4. MailForge verifies ownership asynchronously.
-5. MailForge provisions the domain in Stalwart through JMAP.
-6. The dashboard displays MX, SPF, DKIM, DMARC and other DNS records.
-7. Mailboxes and aliases can then be created.
-8. Sending remains subject to abuse and deliverability policies.
+1. Add a domain to a MailForge organization.
+2. Publish the displayed `_mailforge-verify` TXT challenge in DNS.
+3. Verify ownership from the portal/API.
+4. Provision the verified domain in Stalwart.
+5. Configure the actual mail DNS records (MX, SPF, DKIM, DMARC and mail hostname records).
+6. Create mailboxes and forwarders.
+7. Keep sending restricted until deliverability and abuse checks are complete.
 
-## Local development on Windows or Linux
-
-No Docker is needed.
-
-```bash
-python -m venv .venv
-```
-
-Windows:
+## Quick local start on Windows
 
 ```bat
+python -m venv .venv
 .venv\Scripts\activate
 python -m pip install --upgrade pip
 pip install -e ".[dev]"
 copy .env.example .env
 python manage.py migrate
+python manage.py createsuperuser
 python manage.py runserver
 ```
 
-Linux/macOS:
+Open `http://127.0.0.1:8000/` and sign in with the superuser you created.
 
-```bash
-source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -e ".[dev]"
-cp .env.example .env
-python manage.py migrate
-python manage.py runserver
-```
+Local development falls back to SQLite when `DATABASE_URL` is empty. Production should use PostgreSQL.
 
-Development falls back to SQLite when `DATABASE_URL` is not configured. Production should use PostgreSQL.
+See [`docs/QUICKSTART.md`](docs/QUICKSTART.md) for the no-Docker Windows/Ubuntu walkthrough.
 
 ## Production Ubuntu services
 
 Recommended native services:
 
-- Stalwart Mail Server — mail and collaboration backend
-- Django + Gunicorn — MailForge application
-- PostgreSQL — application database
-- Redis — Celery queue/cache
-- Celery — provisioning and DNS jobs
-- Nginx — reverse proxy for the Django portal if required
-- systemd — service management
+- Stalwart Mail Server — mail and collaboration backend;
+- Django + Gunicorn — MailForge control plane;
+- PostgreSQL — application database;
+- Redis — Celery broker/cache;
+- Celery — background verification/provisioning work;
+- Nginx — reverse proxy for the Django portal;
+- systemd — process management.
 
-## Current implementation
-
-- tenant and membership data model;
-- domain ownership token model;
-- DNS TXT ownership verifier;
-- retry-safe Celery verification task;
-- audit event for successful verification;
-- initial Django migrations;
-- Stalwart JMAP adapter foundation;
-- mailbox/domain backend methods;
-- no-Docker deployment direction.
+Examples are under `deploy/systemd/` and `deploy/nginx/`.
 
 ## Roadmap
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
-The next product-facing milestone is the tenant/domain REST API and dashboard, followed by mailbox lifecycle management and the JMAP-based inbox UI.
+The next major product milestone is **live VPS integration and deliverability/DNS health**, followed by safe mailbox-user authentication and the JMAP-based Gmail-style inbox.
 
 ## Security warning
 
-Self-hosted email is reputation-sensitive infrastructure. Do not open unrestricted public registration or bulk sending before rate limits, abuse handling, monitoring, backup/restore drills and DNS/deliverability checks are complete.
+Self-hosted email is reputation-sensitive infrastructure. Do not open unrestricted public registration or bulk sending before rate limits, abuse handling, monitoring, backup/restore drills and deliverability checks are complete.

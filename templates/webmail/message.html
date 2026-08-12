@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}{{ email.subject|default:"Message" }} · MailForge{% endblock %}
+{% block content %}
+<a class="back" href="{% url 'webmail-inbox' %}">← Inbox</a>
+<section class="card mail-message">
+  <div class="section-heading">
+    <div>
+      <div class="eyebrow">MESSAGE</div>
+      <h1>{{ email.subject|default:"(no subject)" }}</h1>
+    </div>
+    {% if email.hasAttachment %}<span class="pill">Attachment</span>{% endif %}
+  </div>
+
+  <div class="message-headers">
+    <div><strong>From</strong>
+      <span>
+        {% for sender in email.from %}
+          {{ sender.name|default:sender.email }} &lt;{{ sender.email }}&gt;{% if not forloop.last %}, {% endif %}
+        {% empty %}Unknown sender{% endfor %}
+      </span>
+    </div>
+    <div><strong>To</strong>
+      <span>
+        {% for recipient in email.to %}
+          {{ recipient.name|default:recipient.email }} &lt;{{ recipient.email }}&gt;{% if not forloop.last %}, {% endif %}
+        {% empty %}—{% endfor %}
+      </span>
+    </div>
+    <div><strong>Received</strong><span>{{ email.receivedAt }}</span></div>
+  </div>
+
+  <div class="mail-body">{{ plain_text_body|linebreaksbr }}</div>
+
+  {% if email.attachments %}
+    <hr>
+    <h3>Attachments</h3>
+    <div class="list compact">
+      {% for attachment in email.attachments %}
+        <div class="list-row static">
+          <div>
+            <strong>{{ attachment.name|default:"Attachment" }}</strong>
+            <div class="muted small">{{ attachment.type }} · {{ attachment.size }} bytes</div>
+          </div>
+          <span class="pill">Download pending</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <p class="muted small top-gap">HTML bodies are intentionally not rendered raw yet. MailForge is showing the plain-text representation until HTML sanitization is added.</p>
+</section>
+{% endblock %}

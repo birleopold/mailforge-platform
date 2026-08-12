@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard · MailForge{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div>
+    <div class="eyebrow">CONTROL PLANE</div>
+    <h1>Your organizations</h1>
+    <p class="muted">Each organization is an isolated MailForge tenant with its own domains and mailboxes.</p>
+  </div>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Organizations</h2>
+    {% if memberships %}
+      <div class="list">
+        {% for membership in memberships %}
+          <a class="list-row" href="{% url 'portal-tenant' tenant_slug=membership.tenant.slug %}">
+            <div>
+              <strong>{{ membership.tenant.name }}</strong>
+              <div class="muted small">{{ membership.tenant.slug }}</div>
+            </div>
+            <span class="pill">{{ membership.get_role_display }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty">No organizations yet. Create your first one to add a domain.</div>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Create organization</h2>
+    <p class="muted">Use one organization for your personal domains or one for each customer/company.</p>
+    <form method="post" action="{% url 'portal-tenant-create' %}" class="stacked-form">
+      {% csrf_token %}
+      {{ tenant_form.as_p }}
+      <button class="button primary" type="submit">Create organization</button>
+    </form>
+  </section>
+</div>
+{% endblock %}

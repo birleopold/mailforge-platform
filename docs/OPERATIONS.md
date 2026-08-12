@@ -1,56 +1,57 @@
-# Operations
+# Native Ubuntu Operations
 
-## Suggested production topology
+MailForge is designed to run without Docker.
 
-Prefer:
+## Recommended services
 
-- VPS A: Django control plane, PostgreSQL, Celery/Redis (or split DB later)
-- VPS B: mailcow mail plane
-- Backup destination: separate provider/account/location
-- Optional VPS C: cold standby / recovery target
+On Ubuntu, manage components with systemd:
 
-Do not assume "one big VPS" is high availability.
+- `stalwart.service` — mail/collaboration server;
+- PostgreSQL — MailForge application database;
+- Redis — Celery broker/cache;
+- `mailforge-web.service` — Gunicorn serving Django;
+- `mailforge-worker.service` — Celery worker;
+- Nginx — optional public reverse proxy for Django.
+
+## Stalwart installation
+
+Use the official native Linux installer and run Stalwart under its generated service account/systemd unit. Do not install a parallel SMTP server such as Postfix on the same ports.
+
+Before public mail is enabled, confirm the VPS provider allows outbound TCP port 25 and can configure PTR/rDNS for the server IP.
 
 ## Monitoring
 
 Alert on:
 
-- SMTP service availability;
-- IMAP service availability;
-- webmail availability;
-- mail queue size/age;
-- disk usage and inode usage;
-- RAM/CPU pressure;
+- Stalwart SMTP/JMAP/IMAP availability;
+- Django health endpoint;
+- disk usage and inode pressure;
+- mail queue size and age;
 - TLS certificate expiry;
 - DNS drift;
-- backup failure;
-- backup age;
-- restore-test failure;
-- spam/filter service failure;
-- unusual outbound volume;
-- authentication attack spikes.
+- Redis/PostgreSQL health;
+- Celery failures;
+- backup age/failure;
+- unusual outbound volume and authentication failures.
 
-## Deployment
+## Backups
 
-- pin tested versions;
-- stage upgrades;
-- back up before mail stack upgrades;
-- use maintenance windows;
-- document rollback;
-- do not auto-upgrade critical mail components without a tested path.
+Back up both systems independently:
 
-## Recovery targets
+1. MailForge PostgreSQL data;
+2. Stalwart configuration/data store;
+3. required encryption/secrets material.
 
-Define before launch:
+Keep encrypted copies off the production VPS and test restores regularly.
 
-- RPO: how much mail/data loss is acceptable?
-- RTO: how long can service be unavailable?
-- recovery owner;
-- exact restore procedure;
-- backup locations and keys.
+## Upgrade policy
 
-## Logging
+- pin/test releases before production rollout;
+- take backups before mail-server upgrades;
+- stage changes when possible;
+- retain rollback instructions;
+- never treat automatic package updates as a complete mail-stack upgrade strategy.
 
-Keep security and provisioning logs separate from message content.
+## Production topology
 
-Avoid storing email bodies in Django logs.
+A first private deployment can run on one adequately sized VPS. Before selling the service broadly, separate MailForge and Stalwart onto different hosts so a portal problem does not compete with the mail plane for CPU/RAM/disk.

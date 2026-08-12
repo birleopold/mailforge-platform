@@ -7,9 +7,9 @@
     <h2>{{ mail_account.name|default:"Mailbox" }}</h2>
     <a class="button primary full" href="{% url 'webmail-compose' %}">Compose</a>
     <div class="top-gap-sm">
-      <a class="mail-folder {% if not selected_mailbox %}active{% endif %}" href="{% url 'webmail-inbox' %}">All mail <span>{{ total }}</span></a>
+      <a class="mail-folder {% if not selected_mailbox %}active{% endif %}" href="{% url 'webmail-inbox' %}{% if search_text %}?q={{ search_text|urlencode }}{% endif %}">All mail <span>{{ total }}</span></a>
       {% for mailbox in mailboxes %}
-        <a class="mail-folder {% if selected_mailbox == mailbox.id %}active{% endif %}" href="{% url 'webmail-inbox' %}?mailbox={{ mailbox.id|urlencode }}">
+        <a class="mail-folder {% if selected_mailbox == mailbox.id %}active{% endif %}" href="{% url 'webmail-inbox' %}?mailbox={{ mailbox.id|urlencode }}{% if search_text %}&amp;q={{ search_text|urlencode }}{% endif %}">
           <span>{{ mailbox.name }}</span>
           {% if mailbox.unreadEmails %}<strong>{{ mailbox.unreadEmails }}</strong>{% endif %}
         </a>
@@ -22,13 +22,20 @@
   </aside>
 
   <section class="card mail-main">
-    <div class="section-heading">
+    <div class="section-heading mail-heading">
       <div>
         <div class="eyebrow">MESSAGES</div>
-        <h1>Inbox</h1>
+        <h1>{% if search_text %}Search results{% else %}Inbox{% endif %}</h1>
       </div>
       <span class="pill">{{ total }}</span>
     </div>
+
+    <form method="get" class="mail-search">
+      {% if selected_mailbox %}<input type="hidden" name="mailbox" value="{{ selected_mailbox }}">{% endif %}
+      <input type="search" name="q" value="{{ search_text }}" maxlength="500" placeholder="Search mail" aria-label="Search mail">
+      <button class="button" type="submit">Search</button>
+      {% if search_text %}<a class="button" href="{% url 'webmail-inbox' %}{% if selected_mailbox %}?mailbox={{ selected_mailbox|urlencode }}{% endif %}">Clear</a>{% endif %}
+    </form>
 
     {% if mail_error %}
       <div class="empty">Mail could not be loaded from Stalwart. Try again after the server connection is restored.</div>
@@ -55,7 +62,7 @@
         {% endfor %}
       </div>
     {% else %}
-      <div class="empty">No messages in this mailbox.</div>
+      <div class="empty">{% if search_text %}No messages matched “{{ search_text }}”.{% else %}No messages in this mailbox.{% endif %}</div>
     {% endif %}
   </section>
 </div>

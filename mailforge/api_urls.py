@@ -6,6 +6,7 @@ from apps.domains.api import (
     TenantDomainProvisionView,
     TenantDomainVerifyView,
 )
+from apps.mailboxes.api import TenantMailboxDetailView, TenantMailboxListCreateView
 from apps.tenants.api import TenantDetailView, TenantListCreateView
 
 
@@ -31,5 +32,15 @@ urlpatterns = [
         "tenants/<slug:tenant_slug>/domains/<int:pk>/provision/",
         TenantDomainProvisionView.as_view(),
         name="tenant-domain-provision",
+    ),
+    path(
+        "tenants/<slug:tenant_slug>/domains/<int:domain_pk>/mailboxes/",
+        TenantMailboxListCreateView.as_view(),
+        name="tenant-mailbox-list-create",
+    ),
+    path(
+        "tenants/<slug:tenant_slug>/domains/<int:domain_pk>/mailboxes/<int:pk>/",
+        TenantMailboxDetailView.as_view(),
+        name="tenant-mailbox-detail",
     ),
 ]

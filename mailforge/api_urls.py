@@ -3,6 +3,7 @@ from django.urls import path
 from apps.domains.api import (
     TenantDomainDetailView,
     TenantDomainListCreateView,
+    TenantDomainProvisionView,
     TenantDomainVerifyView,
 )
 from apps.tenants.api import TenantDetailView, TenantListCreateView
@@ -25,5 +26,10 @@ urlpatterns = [
         "tenants/<slug:tenant_slug>/domains/<int:pk>/verify/",
         TenantDomainVerifyView.as_view(),
         name="tenant-domain-verify",
+    ),
+    path(
+        "tenants/<slug:tenant_slug>/domains/<int:pk>/provision/",
+        TenantDomainProvisionView.as_view(),
+        name="tenant-domain-provision",
     ),
 ]

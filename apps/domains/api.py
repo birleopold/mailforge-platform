@@ -7,11 +7,14 @@ from rest_framework.views import APIView
 
 from apps.audit.models import AuditEvent
 from apps.domains.models import Domain, normalize_domain_name
+from apps.domains.provisioning import DomainProvisioningError, provision_domain
 from apps.domains.services import (
     DomainVerificationTemporaryError,
     verify_domain_and_record,
 )
 from apps.tenants.models import Tenant, TenantMembership
+from integrations.factory import MailBackendConfigurationError, UnsupportedMailBackend
+from integrations.stalwart.client import StalwartAPIError
 
 
 MANAGE_ROLES = {TenantMembership.Role.OWNER, TenantMembership.Role.ADMIN}
@@ -133,6 +136,36 @@ class TenantDomainVerifyView(APIView):
                 "verified": result.verified,
                 "already_verified": result.already_verified,
                 "observed_values": list(result.observed_values),
+                "domain": DomainSerializer(domain, context={"request": request}).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class TenantDomainProvisionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tenant_slug, pk):
+        tenant, membership = tenant_membership_for_request(request, tenant_slug)
+        if membership.role not in MANAGE_ROLES:
+            raise PermissionDenied("Only tenant owners and administrators can provision domains.")
+
+        domain = get_object_or_404(tenant.domains, pk=pk)
+        try:
+            result = provision_domain(domain.pk, actor=request.user)
+        except DomainProvisioningError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+        except (MailBackendConfigurationError, UnsupportedMailBackend, StalwartAPIError):
+            return Response(
+                {"detail": "The mail backend is currently unavailable or not configured."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        domain.refresh_from_db()
+        return Response(
+            {
+                "provisioned": True,
+                "already_provisioned": result.already_provisioned,
                 "domain": DomainSerializer(domain, context={"request": request}).data,
             },
             status=status.HTTP_200_OK,

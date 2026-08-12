@@ -84,6 +84,21 @@ class StalwartClient(MailBackend):
             raise StalwartAPIError(f"Domain was not created: {data}")
         return created
 
+    def get_domain(self, domain_id: str) -> dict[str, Any]:
+        data = self._call(
+            "x:Domain/get",
+            {
+                "ids": [domain_id],
+                "properties": ["id", "name", "dnsZoneFile", "dkimManagement"],
+            },
+        )
+        items = data.get("list", [])
+        if len(items) != 1:
+            raise StalwartAPIError(
+                f"Expected one Stalwart domain for id {domain_id!r}, found {len(items)}."
+            )
+        return items[0]
+
     def get_domain_id(self, domain: str) -> str:
         data = self._call("x:Domain/query", {"filter": {"name": domain}, "limit": 2})
         ids = data.get("ids", [])

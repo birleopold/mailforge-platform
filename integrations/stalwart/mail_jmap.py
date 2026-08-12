@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import mimetypes
 import os
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -13,6 +15,13 @@ JMAP_SUBMISSION = "urn:ietf:params:jmap:submission"
 
 class MailJMAPError(RuntimeError):
     pass
+
+
+def _expand_jmap_url(template: str, **values: str) -> str:
+    url = template
+    for name, value in values.items():
+        url = url.replace("{" + name + "}", quote(str(value), safe=""))
+    return url
 
 
 class MailJMAPClient:
@@ -273,6 +282,9 @@ class MailJMAPClient:
                             "size",
                             "receivedAt",
                             "sentAt",
+                            "messageId",
+                            "inReplyTo",
+                            "references",
                             "from",
                             "to",
                             "cc",
@@ -300,7 +312,77 @@ class MailJMAPClient:
             raise MailJMAPError("Email not found.")
         return items[0]
 
+    def upload_blob(
+        self,
+        *,
+        data: bytes,
+        filename: str,
+        content_type: str | None = None,
+    ) -> dict[str, Any]:
+        session = self.session()
+        account_id = self.primary_mail_account_id()
+        template = session.get("uploadUrl")
+        if not template:
+            raise MailJMAPError("The JMAP server does not advertise an upload endpoint.")
+        media_type = content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        upload_url = _expand_jmap_url(template, accountId=account_id)
+        try:
+            with self._client() as client:
+                response = client.post(
+                    upload_url,
+                    content=data,
+                    headers={"Content-Type": media_type, "Accept": "application/json"},
+                )
+                response.raise_for_status()
+                uploaded = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise MailJMAPError("Attachment upload failed.") from exc
+        if not uploaded.get("blobId"):
+            raise MailJMAPError("The attachment upload did not return a blob id.")
+        return {
+            "blobId": uploaded["blobId"],
+            "type": uploaded.get("type") or media_type,
+            "size": uploaded.get("size", len(data)),
+            "name": filename,
+        }
+
+    def download_blob(
+        self,
+        *,
+        blob_id: str,
+        filename: str,
+        content_type: str | None = None,
+    ) -> tuple[bytes, str]:
+        session = self.session()
+        account_id = self.primary_mail_account_id()
+        template = session.get("downloadUrl")
+        if not template:
+            raise MailJMAPError("The JMAP server does not advertise a download endpoint.")
+        media_type = content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        download_url = _expand_jmap_url(
+            template,
+            accountId=account_id,
+            blobId=blob_id,
+            type=media_type,
+            name=filename,
+        )
+        try:
+            with self._client() as client:
+                response = client.get(download_url)
+                response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise MailJMAPError("Attachment download failed.") from exc
+        return response.content, response.headers.get("Content-Type", media_type)
+
     def set_seen(self, email_id: str, *, seen: bool) -> None:
+        self.set_keyword(email_id, "$seen", enabled=seen)
+
+    def set_answered(self, email_id: str, *, answered: bool = True) -> None:
+        self.set_keyword(email_id, "$answered", enabled=answered)
+
+    def set_keyword(self, email_id: str, keyword: str, *, enabled: bool) -> None:
+        if not keyword or "/" in keyword:
+            raise MailJMAPError("Invalid message keyword.")
         account_id = self.primary_mail_account_id()
         responses = self.call(
             [
@@ -310,11 +392,11 @@ class MailJMAPClient:
                         "accountId": account_id,
                         "update": {
                             email_id: {
-                                "keywords/$seen": True if seen else None,
+                                f"keywords/{keyword}": True if enabled else None,
                             }
                         },
                     },
-                    "seen-update",
+                    "keyword-update",
                 ]
             ]
         )
@@ -322,7 +404,7 @@ class MailJMAPClient:
         error = (data.get("notUpdated") or {}).get(email_id)
         if error:
             error_type = error.get("type", "unknown")
-            raise MailJMAPError(f"Message seen state could not be updated: {error_type}.")
+            raise MailJMAPError(f"Message keyword could not be updated: {error_type}.")
 
     def send_plaintext(
         self,
@@ -333,6 +415,9 @@ class MailJMAPClient:
         body: str,
         cc: list[dict[str, str]] | None = None,
         bcc: list[dict[str, str]] | None = None,
+        attachments: list[dict[str, Any]] | None = None,
+        in_reply_to: list[str] | None = None,
+        references: list[str] | None = None,
     ) -> dict[str, Any]:
         account_id = self.primary_mail_account_id()
         identities = self.list_identities()
@@ -353,7 +438,30 @@ class MailJMAPClient:
         if signature:
             text = f"{text.rstrip()}\n\n{signature}\n"
 
-        draft = {
+        attachment_parts = []
+        for attachment in attachments or []:
+            if not attachment.get("blobId"):
+                raise MailJMAPError("An attachment is missing its JMAP blob id.")
+            attachment_parts.append(
+                {
+                    "blobId": attachment["blobId"],
+                    "type": attachment.get("type") or "application/octet-stream",
+                    "name": attachment.get("name") or "attachment",
+                    "disposition": "attachment",
+                }
+            )
+
+        text_part = {"type": "text/plain", "partId": "body", "disposition": "inline"}
+        body_structure: dict[str, Any]
+        if attachment_parts:
+            body_structure = {
+                "type": "multipart/mixed",
+                "subParts": [text_part, *attachment_parts],
+            }
+        else:
+            body_structure = text_part
+
+        draft: dict[str, Any] = {
             "mailboxIds": {drafts_id: True},
             "keywords": {"$draft": True, "$seen": True},
             "from": [
@@ -364,7 +472,7 @@ class MailJMAPClient:
             ],
             "to": to,
             "subject": subject,
-            "bodyStructure": {"type": "text/plain", "partId": "body"},
+            "bodyStructure": body_structure,
             "bodyValues": {"body": {"value": text}},
         }
         if cc:
@@ -373,6 +481,10 @@ class MailJMAPClient:
             draft["bcc"] = bcc
         if identity.get("replyTo"):
             draft["replyTo"] = identity["replyTo"]
+        if in_reply_to:
+            draft["inReplyTo"] = list(dict.fromkeys(in_reply_to))
+        if references:
+            draft["references"] = list(dict.fromkeys(references))
 
         responses = self.call(
             [

@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.audit.models import AuditEvent
@@ -21,6 +22,14 @@ def client_for(user):
 
 def add_member(tenant, user, role):
     return TenantMembership.objects.create(tenant=tenant, user=user, role=role)
+
+
+class FakeMailBackend:
+    def create_domain(self, *, domain, max_mailboxes, quota_mb):
+        assert domain == "example.com"
+        assert max_mailboxes > 0
+        assert quota_mb > 0
+        return {"id": "stalwart-domain-1"}
 
 
 @pytest.mark.django_db
@@ -97,3 +106,52 @@ def test_owner_can_verify_domain_synchronously():
         tenant=tenant,
         target_id=str(domain.pk),
     ).count() == 1
+
+
+@pytest.mark.django_db
+def test_verified_domain_can_be_provisioned_into_backend():
+    user = User.objects.create_user(username="provision-owner")
+    tenant = Tenant.objects.create(name="Acme", slug="acme")
+    add_member(tenant, user, TenantMembership.Role.OWNER)
+    domain = Domain.objects.create(
+        tenant=tenant,
+        name="example.com",
+        status=Domain.Status.VERIFIED,
+        verified_at=timezone.now(),
+    )
+
+    with patch(
+        "apps.domains.provisioning.get_mail_backend",
+        return_value=FakeMailBackend(),
+    ):
+        response = client_for(user).post(
+            f"/api/v1/tenants/acme/domains/{domain.pk}/provision/",
+            format="json",
+        )
+
+    assert response.status_code == 200
+    domain.refresh_from_db()
+    assert domain.status == Domain.Status.DNS_CONFIGURATION
+    assert domain.backend_identifier == "stalwart-domain-1"
+    assert AuditEvent.objects.filter(
+        action="domain.provisioned",
+        tenant=tenant,
+        target_id=str(domain.pk),
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_unverified_domain_cannot_be_provisioned():
+    user = User.objects.create_user(username="unverified-owner")
+    tenant = Tenant.objects.create(name="Acme", slug="acme")
+    add_member(tenant, user, TenantMembership.Role.OWNER)
+    domain = Domain.objects.create(tenant=tenant, name="example.com")
+
+    response = client_for(user).post(
+        f"/api/v1/tenants/acme/domains/{domain.pk}/provision/",
+        format="json",
+    )
+
+    assert response.status_code == 409
+    domain.refresh_from_db()
+    assert domain.backend_identifier == ""

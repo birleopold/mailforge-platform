@@ -13,6 +13,10 @@ class MailboxProvisioningError(RuntimeError):
     pass
 
 
+class MailboxLifecycleError(RuntimeError):
+    pass
+
+
 @dataclass(frozen=True)
 class MailboxProvisioningResult:
     mailbox: Mailbox
@@ -88,3 +92,109 @@ def provision_mailbox(
         },
     )
     return MailboxProvisioningResult(mailbox=mailbox)
+
+
+def _mailbox_for_lifecycle(mailbox_id: int) -> Mailbox:
+    mailbox = Mailbox.objects.select_related("domain__tenant").get(pk=mailbox_id)
+    if mailbox.status == Mailbox.Status.DELETED:
+        raise MailboxLifecycleError("This mailbox has already been deleted.")
+    if not mailbox.backend_identifier:
+        raise MailboxLifecycleError("This mailbox is not provisioned in the mail backend.")
+    return mailbox
+
+
+def _audit_mailbox(mailbox: Mailbox, *, actor, action: str, metadata=None):
+    AuditEvent.objects.create(
+        tenant=mailbox.domain.tenant,
+        actor=actor,
+        action=action,
+        target_type="mailbox",
+        target_id=str(mailbox.pk),
+        metadata={"email": mailbox.email_address, **(metadata or {})},
+    )
+
+
+def suspend_mailbox(mailbox_id: int, *, backend=None, actor=None) -> Mailbox:
+    mailbox = _mailbox_for_lifecycle(mailbox_id)
+    if mailbox.status == Mailbox.Status.SUSPENDED:
+        return mailbox
+    if mailbox.status != Mailbox.Status.ACTIVE:
+        raise MailboxLifecycleError("Only active mailboxes can be suspended.")
+
+    resolved_backend = backend or get_mail_backend()
+    resolved_backend.set_account_suspended(
+        account_id=mailbox.backend_identifier,
+        suspended=True,
+    )
+    Mailbox.objects.filter(pk=mailbox.pk, status=Mailbox.Status.ACTIVE).update(
+        status=Mailbox.Status.SUSPENDED
+    )
+    mailbox.refresh_from_db()
+    _audit_mailbox(mailbox, actor=actor, action="mailbox.suspended")
+    return mailbox
+
+
+def reactivate_mailbox(mailbox_id: int, *, backend=None, actor=None) -> Mailbox:
+    mailbox = _mailbox_for_lifecycle(mailbox_id)
+    if mailbox.status == Mailbox.Status.ACTIVE:
+        return mailbox
+    if mailbox.status != Mailbox.Status.SUSPENDED:
+        raise MailboxLifecycleError("Only suspended mailboxes can be reactivated.")
+
+    domain = mailbox.domain
+    sending_enabled = domain.sending_enabled and domain.status == Domain.Status.ACTIVE
+    resolved_backend = backend or get_mail_backend()
+    resolved_backend.set_account_suspended(
+        account_id=mailbox.backend_identifier,
+        suspended=False,
+        sending_enabled=sending_enabled,
+    )
+    Mailbox.objects.filter(pk=mailbox.pk, status=Mailbox.Status.SUSPENDED).update(
+        status=Mailbox.Status.ACTIVE
+    )
+    mailbox.refresh_from_db()
+    _audit_mailbox(
+        mailbox,
+        actor=actor,
+        action="mailbox.reactivated",
+        metadata={"sending_enabled": sending_enabled},
+    )
+    return mailbox
+
+
+def reset_mailbox_password(
+    mailbox_id: int,
+    *,
+    password: str,
+    backend=None,
+    actor=None,
+) -> Mailbox:
+    mailbox = _mailbox_for_lifecycle(mailbox_id)
+    if mailbox.status not in {Mailbox.Status.ACTIVE, Mailbox.Status.SUSPENDED}:
+        raise MailboxLifecycleError("This mailbox cannot have its password reset in its current state.")
+
+    resolved_backend = backend or get_mail_backend()
+    resolved_backend.reset_account_password(
+        account_id=mailbox.backend_identifier,
+        password=password,
+    )
+    _audit_mailbox(mailbox, actor=actor, action="mailbox.password_reset")
+    return mailbox
+
+
+def delete_mailbox(mailbox_id: int, *, backend=None, actor=None) -> Mailbox:
+    mailbox = _mailbox_for_lifecycle(mailbox_id)
+    if mailbox.status not in {Mailbox.Status.ACTIVE, Mailbox.Status.SUSPENDED}:
+        raise MailboxLifecycleError("This mailbox cannot be deleted in its current state.")
+
+    resolved_backend = backend or get_mail_backend()
+    resolved_backend.delete_account(account_id=mailbox.backend_identifier)
+    Mailbox.objects.filter(pk=mailbox.pk).update(status=Mailbox.Status.DELETED)
+    mailbox.refresh_from_db()
+    _audit_mailbox(
+        mailbox,
+        actor=actor,
+        action="mailbox.deleted",
+        metadata={"backend_identifier": mailbox.backend_identifier},
+    )
+    return mailbox

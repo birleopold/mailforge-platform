@@ -1,11 +1,8 @@
-from uuid import uuid4
-
-from django.db import transaction
-from django.utils.text import slugify
 from rest_framework import generics, serializers
 from rest_framework.permissions import IsAuthenticated
 
-from apps.tenants.models import Tenant, TenantMembership
+from apps.tenants.models import Tenant
+from apps.tenants.services import create_tenant
 
 
 class TenantSerializer(serializers.ModelSerializer):
@@ -44,15 +41,8 @@ class TenantSerializer(serializers.ModelSerializer):
         )
 
     def create(self, validated_data):
-        base = slugify(validated_data["name"])[:45] or "tenant"
-        slug = base
-        while Tenant.objects.filter(slug=slug).exists():
-            slug = f"{base}-{uuid4().hex[:6]}"
-        validated_data["slug"] = slug
-        validated_data["kind"] = Tenant.Kind.CUSTOMER
-        validated_data["status"] = Tenant.Status.ACTIVE
-        validated_data["plan_code"] = "free"
-        return super().create(validated_data)
+        request = self.context["request"]
+        return create_tenant(name=validated_data["name"], owner=request.user)
 
 
 class TenantListCreateView(generics.ListCreateAPIView):
@@ -64,15 +54,6 @@ class TenantListCreateView(generics.ListCreateAPIView):
             Tenant.objects.filter(memberships__user=self.request.user)
             .distinct()
             .order_by("name")
-        )
-
-    @transaction.atomic
-    def perform_create(self, serializer):
-        tenant = serializer.save()
-        TenantMembership.objects.create(
-            tenant=tenant,
-            user=self.request.user,
-            role=TenantMembership.Role.OWNER,
         )
 
 

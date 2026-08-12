@@ -1,22 +1,22 @@
 {% extends 'base.html' %}
-{% block title %}Compose · MailForge{% endblock %}
+{% block title %}{{ compose_title|default:"Compose" }} · MailForge{% endblock %}
 {% block content %}
 <a class="back" href="{% url 'webmail-inbox' %}">← Inbox</a>
 <div class="page-heading">
   <div class="eyebrow">WEBMAIL</div>
-  <h1>New message</h1>
+  <h1>{{ compose_title|default:"New message" }}</h1>
   <p class="muted">Messages are submitted through the connected mailbox's JMAP sending identity. MailForge blocks sending until the domain readiness gate is active.</p>
 </div>
 
 <section class="card compose-card">
-  <form method="post" class="stacked-form">
+  <form method="post" enctype="multipart/form-data" class="stacked-form">
     {% csrf_token %}
     {{ form.non_field_errors }}
     <div class="grid two compose-top-grid">
       <div>{{ form.identity_id.label_tag }}{{ form.identity_id }}{{ form.identity_id.errors }}</div>
       <div>{{ form.to.label_tag }}{{ form.to }}{{ form.to.errors }}{% if form.to.help_text %}<span class="helptext">{{ form.to.help_text }}</span>{% endif %}</div>
     </div>
-    <details class="compose-copy-fields">
+    <details class="compose-copy-fields" {% if form.cc.value or form.bcc.value %}open{% endif %}>
       <summary>Add Cc/Bcc</summary>
       <div class="grid two top-gap-sm">
         <div>{{ form.cc.label_tag }}{{ form.cc }}{{ form.cc.errors }}</div>
@@ -25,8 +25,29 @@
     </details>
     <div class="top-gap-sm">{{ form.subject.label_tag }}{{ form.subject }}{{ form.subject.errors }}</div>
     <div class="top-gap-sm">{{ form.body.label_tag }}{{ form.body }}{{ form.body.errors }}</div>
+    <div class="top-gap-sm attachment-field">
+      {{ form.attachments.label_tag }}
+      {{ form.attachments }}
+      {{ form.attachments.errors }}
+      {% if form.attachments.help_text %}<span class="helptext">{{ form.attachments.help_text }}</span>{% endif %}
+    </div>
+
+    {% if compose_mode == 'forward' and source.attachments %}
+      <div class="forwarded-attachments top-gap-sm">
+        <strong>Original attachments included</strong>
+        <div class="muted small">The following files will be forwarded from the original message without downloading them through the browser.</div>
+        <div class="attachment-chips">
+          {% for attachment in source.attachments %}
+            {% if attachment.blobId %}
+              <span class="pill">{{ attachment.name|default:"Attachment" }}</span>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
     <div class="compose-actions">
-      <button class="button primary" type="submit">Send message</button>
+      <button class="button primary" type="submit">{{ send_label|default:"Send message" }}</button>
       <a class="button" href="{% url 'webmail-inbox' %}">Cancel</a>
     </div>
   </form>

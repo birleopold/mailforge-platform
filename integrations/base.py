@@ -37,3 +37,11 @@ class MailBackend(ABC):
     @abstractmethod
     def create_alias(self, *, address, destinations):
         raise NotImplementedError
+
+    @abstractmethod
+    def update_alias(self, *, alias_id, destinations):
+        raise NotImplementedError
+
+    @abstractmethod
+    def delete_alias(self, *, alias_id):
+        raise NotImplementedError

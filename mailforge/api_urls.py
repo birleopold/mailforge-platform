@@ -1,6 +1,7 @@
 from django.urls import path
 
 from apps.domains.api import (
+    TenantDomainDNSCheckView,
     TenantDomainDetailView,
     TenantDomainListCreateView,
     TenantDomainProvisionView,
@@ -37,6 +38,11 @@ urlpatterns = [
         "tenants/<slug:tenant_slug>/domains/<int:pk>/provision/",
         TenantDomainProvisionView.as_view(),
         name="tenant-domain-provision",
+    ),
+    path(
+        "tenants/<slug:tenant_slug>/domains/<int:pk>/dns-check/",
+        TenantDomainDNSCheckView.as_view(),
+        name="tenant-domain-dns-check",
     ),
     path(
         "tenants/<slug:tenant_slug>/domains/<int:domain_pk>/mailboxes/",

@@ -8,6 +8,7 @@ import httpx
 
 JMAP_CORE = "urn:ietf:params:jmap:core"
 JMAP_MAIL = "urn:ietf:params:jmap:mail"
+JMAP_SUBMISSION = "urn:ietf:params:jmap:submission"
 
 
 class MailJMAPError(RuntimeError):
@@ -100,6 +101,17 @@ class MailJMAPClient:
                 raise MailJMAPError(f"JMAP method failed: {error_type}.")
         return responses
 
+    @staticmethod
+    def _created(data: dict[str, Any], creation_id: str, object_name: str) -> dict[str, Any]:
+        item = (data.get("created") or {}).get(creation_id)
+        if item:
+            return item
+        error = (data.get("notCreated") or {}).get(creation_id) or {}
+        error_type = error.get("type", "unknown")
+        description = error.get("description")
+        suffix = f" ({description})" if description else ""
+        raise MailJMAPError(f"{object_name} could not be created: {error_type}{suffix}.")
+
     def list_mailboxes(self) -> list[dict[str, Any]]:
         account_id = self.primary_mail_account_id()
         responses = self.call(
@@ -145,6 +157,31 @@ class MailJMAPClient:
                     "g1",
                 ]
             ]
+        )
+        return responses[0][1].get("list", [])
+
+    def list_identities(self) -> list[dict[str, Any]]:
+        account_id = self.primary_mail_account_id()
+        responses = self.call(
+            [
+                [
+                    "Identity/get",
+                    {
+                        "accountId": account_id,
+                        "ids": None,
+                        "properties": [
+                            "id",
+                            "name",
+                            "email",
+                            "replyTo",
+                            "bcc",
+                            "textSignature",
+                        ],
+                    },
+                    "i1",
+                ]
+            ],
+            using=(JMAP_CORE, JMAP_MAIL, JMAP_SUBMISSION),
         )
         return responses[0][1].get("list", [])
 
@@ -256,3 +293,104 @@ class MailJMAPClient:
         if not items:
             raise MailJMAPError("Email not found.")
         return items[0]
+
+    def send_plaintext(
+        self,
+        *,
+        identity_id: str,
+        to: list[dict[str, str]],
+        subject: str,
+        body: str,
+        cc: list[dict[str, str]] | None = None,
+        bcc: list[dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
+        account_id = self.primary_mail_account_id()
+        identities = self.list_identities()
+        identity = next((item for item in identities if item.get("id") == identity_id), None)
+        if identity is None:
+            raise MailJMAPError("The selected sending identity is not available.")
+        if not to and not cc and not bcc:
+            raise MailJMAPError("At least one recipient is required.")
+
+        mailboxes = self.list_mailboxes()
+        drafts_id = next((item.get("id") for item in mailboxes if item.get("role") == "drafts"), None)
+        sent_id = next((item.get("id") for item in mailboxes if item.get("role") == "sent"), None)
+        if not drafts_id or not sent_id:
+            raise MailJMAPError("The mailbox must have Drafts and Sent folders before sending.")
+
+        text = body
+        signature = (identity.get("textSignature") or "").strip()
+        if signature:
+            text = f"{text.rstrip()}\n\n{signature}\n"
+
+        draft = {
+            "mailboxIds": {drafts_id: True},
+            "keywords": {"$draft": True, "$seen": True},
+            "from": [
+                {
+                    "name": identity.get("name") or None,
+                    "email": identity["email"],
+                }
+            ],
+            "to": to,
+            "subject": subject,
+            "bodyStructure": {"type": "text/plain", "partId": "body"},
+            "bodyValues": {"body": {"value": text}},
+        }
+        if cc:
+            draft["cc"] = cc
+        if bcc:
+            draft["bcc"] = bcc
+        if identity.get("replyTo"):
+            draft["replyTo"] = identity["replyTo"]
+
+        responses = self.call(
+            [
+                [
+                    "Email/set",
+                    {
+                        "accountId": account_id,
+                        "create": {"mailforge-draft": draft},
+                    },
+                    "draft-create",
+                ]
+            ],
+            using=(JMAP_CORE, JMAP_MAIL),
+        )
+        created_email = self._created(responses[0][1], "mailforge-draft", "Draft")
+        email_id = created_email["id"]
+
+        responses = self.call(
+            [
+                [
+                    "EmailSubmission/set",
+                    {
+                        "accountId": account_id,
+                        "create": {
+                            "mailforge-submit": {
+                                "identityId": identity_id,
+                                "emailId": email_id,
+                            }
+                        },
+                        "onSuccessUpdateEmail": {
+                            "#mailforge-submit": {
+                                f"mailboxIds/{drafts_id}": None,
+                                f"mailboxIds/{sent_id}": True,
+                                "keywords/$draft": None,
+                            }
+                        },
+                    },
+                    "submit",
+                ]
+            ],
+            using=(JMAP_CORE, JMAP_MAIL, JMAP_SUBMISSION),
+        )
+        submission = self._created(
+            responses[0][1],
+            "mailforge-submit",
+            "Email submission",
+        )
+        return {
+            "emailId": email_id,
+            "submissionId": submission["id"],
+        }

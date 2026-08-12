@@ -8,7 +8,13 @@
       <div class="eyebrow">MESSAGE</div>
       <h1>{{ email.subject|default:"(no subject)" }}</h1>
     </div>
-    {% if email.hasAttachment %}<span class="pill">Attachment</span>{% endif %}
+    <div class="message-actions">
+      {% if email.hasAttachment %}<span class="pill">Attachment</span>{% endif %}
+      <form method="post" action="{% url 'webmail-mark-unread' email_id=email.id %}">
+        {% csrf_token %}
+        <button class="button" type="submit">Mark unread</button>
+      </form>
+    </div>
   </div>
 
   <div class="message-headers">

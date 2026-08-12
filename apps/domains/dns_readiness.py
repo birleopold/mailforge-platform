@@ -4,14 +4,23 @@ from dataclasses import dataclass
 from typing import Any
 
 import dns.exception
+import dns.name
 import dns.resolver
 import dns.reversename
+import dns.rdatatype
+import dns.zone
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
 from apps.audit.models import AuditEvent
 from apps.domains.models import Domain
+from integrations.factory import (
+    MailBackendConfigurationError,
+    UnsupportedMailBackend,
+    get_mail_backend,
+)
+from integrations.stalwart.client import StalwartAPIError
 
 
 @dataclass(frozen=True)
@@ -25,6 +34,46 @@ def _txt_value(record) -> str:
     if strings is not None:
         return b"".join(strings).decode("utf-8", errors="replace")
     return record.to_text().replace('" "', "").strip('"')
+
+
+def _normalized_txt(value: str) -> str:
+    return "".join(value.split())
+
+
+def extract_dkim_records(zone_file: str, domain_name: str) -> list[dict[str, str]] | None:
+    if not zone_file.strip():
+        return None
+    try:
+        zone = dns.zone.from_text(
+            zone_file,
+            origin=dns.name.from_text(f"{domain_name}."),
+            relativize=False,
+            check_origin=False,
+            allow_include=False,
+        )
+    except (dns.exception.DNSException, ValueError):
+        return None
+
+    suffix = f"._domainkey.{domain_name}".lower()
+    records = []
+    seen = set()
+    for record_name, node in zone.nodes.items():
+        name = record_name.to_text().rstrip(".").lower()
+        if not name.endswith(suffix):
+            continue
+        for rdataset in node.rdatasets:
+            if rdataset.rdtype != dns.rdatatype.TXT:
+                continue
+            for record in rdataset:
+                value = _txt_value(record).strip()
+                if not value.lower().startswith("v=dkim1"):
+                    continue
+                key = (name, _normalized_txt(value))
+                if key in seen:
+                    continue
+                records.append({"name": name, "value": value})
+                seen.add(key)
+    return sorted(records, key=lambda item: (item["name"], item["value"]))
 
 
 def _resolve(resolver, name: str, record_type: str):
@@ -96,6 +145,59 @@ def _check_spf(resolver, domain_name: str) -> dict[str, Any]:
         "required": True,
         "expected": "v=spf1 mx -all",
         "observed": spf_records,
+        "detail": detail,
+    }
+
+
+def _check_dkim(resolver, expected_records: list[dict[str, str]] | None) -> dict[str, Any]:
+    if expected_records is None:
+        return {
+            "status": "warn",
+            "required": True,
+            "expected": "Stalwart-generated _domainkey TXT records",
+            "observed": [],
+            "detail": "Stalwart's current DKIM DNS expectation is not available yet.",
+        }
+    if not expected_records:
+        return {
+            "status": "fail",
+            "required": True,
+            "expected": "Stalwart-generated _domainkey TXT records",
+            "observed": [],
+            "detail": "Stalwart's DNS zone does not currently contain an active DKIM TXT record.",
+        }
+
+    expected_display = [f"{item['name']}={item['value']}" for item in expected_records]
+    observed_display = []
+    failed_names = []
+    temporary_names = []
+
+    for item in expected_records:
+        answer = _resolve(resolver, item["name"], "TXT")
+        if answer is None:
+            temporary_names.append(item["name"])
+            continue
+        observed_values = [_txt_value(record).strip() for record in answer]
+        observed_display.extend(f"{item['name']}={value}" for value in observed_values)
+        expected_value = _normalized_txt(item["value"])
+        if expected_value not in {_normalized_txt(value) for value in observed_values}:
+            failed_names.append(item["name"])
+
+    if failed_names:
+        status = "fail"
+        detail = "Publish the exact Stalwart DKIM TXT record(s): " + ", ".join(failed_names)
+    elif temporary_names:
+        status = "warn"
+        detail = "DKIM lookup temporarily failed for: " + ", ".join(temporary_names)
+    else:
+        status = "pass"
+        detail = "All active Stalwart DKIM signing records are published."
+
+    return {
+        "status": status,
+        "required": True,
+        "expected": expected_display,
+        "observed": observed_display,
         "detail": detail,
     }
 
@@ -183,7 +285,35 @@ def _check_ptr(resolver, mail_ipv4: str, mail_hostname: str) -> dict[str, Any]:
     }
 
 
-def inspect_domain_dns(domain_name: str, *, resolver=None) -> DNSReadinessResult:
+def _refresh_dns_zone_file(domain: Domain, *, backend=None) -> str:
+    if not domain.backend_identifier:
+        return domain.dns_zone_file
+    try:
+        backend = backend or get_mail_backend()
+    except (MailBackendConfigurationError, UnsupportedMailBackend):
+        return domain.dns_zone_file
+
+    getter = getattr(backend, "get_domain", None)
+    if getter is None:
+        return domain.dns_zone_file
+    try:
+        snapshot = getter(domain.backend_identifier)
+    except StalwartAPIError:
+        return domain.dns_zone_file
+
+    fresh_zone = str(snapshot.get("dnsZoneFile") or "")
+    if fresh_zone and fresh_zone != domain.dns_zone_file:
+        Domain.objects.filter(pk=domain.pk).update(dns_zone_file=fresh_zone)
+        domain.dns_zone_file = fresh_zone
+    return domain.dns_zone_file
+
+
+def inspect_domain_dns(
+    domain_name: str,
+    *,
+    resolver=None,
+    dkim_records: list[dict[str, str]] | None = None,
+) -> DNSReadinessResult:
     resolver = resolver or dns.resolver.Resolver()
     mail_hostname = settings.MAILFORGE_MAIL_HOSTNAME.strip().rstrip(".").lower()
     mail_ipv4 = settings.MAILFORGE_MAIL_IPV4.strip()
@@ -191,6 +321,7 @@ def inspect_domain_dns(domain_name: str, *, resolver=None) -> DNSReadinessResult
     checks = {
         "mx": _check_mx(resolver, domain_name, mail_hostname),
         "spf": _check_spf(resolver, domain_name),
+        "dkim": _check_dkim(resolver, dkim_records),
         "dmarc": _check_dmarc(resolver, domain_name),
         "ptr": _check_ptr(resolver, mail_ipv4, mail_hostname),
     }
@@ -202,9 +333,21 @@ def inspect_domain_dns(domain_name: str, *, resolver=None) -> DNSReadinessResult
     return DNSReadinessResult(ready=ready, checks=checks)
 
 
-def check_domain_dns(domain_id: int, *, actor=None, resolver=None) -> DNSReadinessResult:
+def check_domain_dns(
+    domain_id: int,
+    *,
+    actor=None,
+    resolver=None,
+    backend=None,
+) -> DNSReadinessResult:
     domain = Domain.objects.select_related("tenant").get(pk=domain_id)
-    result = inspect_domain_dns(domain.name, resolver=resolver)
+    zone_file = _refresh_dns_zone_file(domain, backend=backend)
+    dkim_records = extract_dkim_records(zone_file, domain.name)
+    result = inspect_domain_dns(
+        domain.name,
+        resolver=resolver,
+        dkim_records=dkim_records,
+    )
     now = timezone.now()
 
     with transaction.atomic():

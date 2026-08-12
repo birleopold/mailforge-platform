@@ -3,7 +3,7 @@ from django.contrib.auth.views import LoginView, LogoutView
 from django.http import JsonResponse
 from django.urls import include, path
 
-from mailforge import portal_views
+from mailforge import portal_views, webmail_views
 
 
 def health(request):
@@ -18,6 +18,20 @@ urlpatterns = [
         name="login",
     ),
     path("accounts/logout/", LogoutView.as_view(), name="logout"),
+    path("mail/", webmail_views.webmail_home, name="webmail-home"),
+    path("mail/connect/", webmail_views.webmail_connect, name="webmail-connect"),
+    path(
+        "mail/oauth/callback/",
+        webmail_views.webmail_oauth_callback,
+        name="webmail-oauth-callback",
+    ),
+    path("mail/inbox/", webmail_views.webmail_inbox, name="webmail-inbox"),
+    path(
+        "mail/messages/<str:email_id>/",
+        webmail_views.webmail_message,
+        name="webmail-message",
+    ),
+    path("mail/disconnect/", webmail_views.webmail_disconnect, name="webmail-disconnect"),
     path("portal/tenants/create/", portal_views.tenant_create, name="portal-tenant-create"),
     path(
         "portal/tenants/<slug:tenant_slug>/",

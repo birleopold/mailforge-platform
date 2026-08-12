@@ -64,6 +64,7 @@ def provision_mailbox(
             password=password,
             quota_mb=quota_mb,
             display_name=mailbox.display_name,
+            sending_enabled=domain.sending_enabled and domain.status == Domain.Status.ACTIVE,
         )
         backend_identifier = str(created["id"])
     except Exception:
@@ -83,6 +84,7 @@ def provision_mailbox(
             "email": mailbox.email_address,
             "quota_mb": mailbox.quota_mb,
             "backend_identifier": backend_identifier,
+            "sending_enabled": domain.sending_enabled and domain.status == Domain.Status.ACTIVE,
         },
     )
     return MailboxProvisioningResult(mailbox=mailbox)

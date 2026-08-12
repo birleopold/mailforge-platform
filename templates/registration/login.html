@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Sign in · MailForge{% endblock %}
+{% block content %}
+<section class="auth-card card narrow">
+  <div class="eyebrow">MAILFORGE CONTROL PLANE</div>
+  <h1>Sign in</h1>
+  <p class="muted">Manage your organizations, domains, mailboxes and forwarders.</p>
+  <form method="post" class="stacked-form">
+    {% csrf_token %}
+    {{ form.as_p }}
+    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+    <button class="button primary full" type="submit">Sign in</button>
+  </form>
+</section>
+{% endblock %}

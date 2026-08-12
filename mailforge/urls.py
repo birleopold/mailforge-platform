@@ -45,6 +45,11 @@ urlpatterns = [
         name="portal-domain-provision",
     ),
     path(
+        "portal/tenants/<slug:tenant_slug>/domains/<int:domain_pk>/dns-check/",
+        portal_views.domain_dns_check,
+        name="portal-domain-dns-check",
+    ),
+    path(
         "portal/tenants/<slug:tenant_slug>/domains/<int:domain_pk>/forwarders/create/",
         portal_views.forwarder_create,
         name="portal-forwarder-create",

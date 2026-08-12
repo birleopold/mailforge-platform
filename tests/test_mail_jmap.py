@@ -218,3 +218,78 @@ def test_send_plaintext_creates_draft_then_submits_and_moves_to_sent():
         "EmailSubmission/set",
     ]
     assert len(payloads) == 5
+
+
+def test_search_uses_jmap_text_filter_with_mailbox():
+    captured_filter = {}
+
+    def handler(request):
+        if request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "apiUrl": "https://mail.example.test/jmap",
+                    "accounts": {"u1": {"name": "alice@example.test"}},
+                    "primaryAccounts": {JMAP_MAIL: "u1"},
+                },
+            )
+        payload = json.loads(request.content)
+        method, args, call_id = payload["methodCalls"][0]
+        if method == "Email/query":
+            captured_filter.update(args["filter"])
+            data = {
+                "accountId": "u1",
+                "queryState": "q1",
+                "ids": [],
+                "position": 0,
+                "total": 0,
+            }
+        else:
+            raise AssertionError(f"Unexpected JMAP method: {method}")
+        return httpx.Response(200, json={"methodResponses": [[method, data, call_id]]})
+
+    client = MailJMAPClient(
+        access_token="user-token",
+        base_url="https://mail.example.test",
+        transport=httpx.MockTransport(handler),
+    )
+    result = client.list_emails(mailbox_id="inbox", search_text="quarterly report")
+
+    assert captured_filter == {"inMailbox": "inbox", "text": "quarterly report"}
+    assert result["emails"] == []
+
+
+def test_set_seen_uses_keyword_patch():
+    captured_update = {}
+
+    def handler(request):
+        if request.method == "GET":
+            return httpx.Response(
+                200,
+                json={
+                    "apiUrl": "https://mail.example.test/jmap",
+                    "accounts": {"u1": {"name": "alice@example.test"}},
+                    "primaryAccounts": {JMAP_MAIL: "u1"},
+                },
+            )
+        payload = json.loads(request.content)
+        method, args, call_id = payload["methodCalls"][0]
+        assert method == "Email/set"
+        captured_update.update(args["update"])
+        data = {
+            "accountId": "u1",
+            "oldState": "e1",
+            "newState": "e2",
+            "updated": {"email-1": None},
+        }
+        return httpx.Response(200, json={"methodResponses": [[method, data, call_id]]})
+
+    client = MailJMAPClient(
+        access_token="user-token",
+        base_url="https://mail.example.test",
+        transport=httpx.MockTransport(handler),
+    )
+
+    client.set_seen("email-1", seen=False)
+
+    assert captured_update == {"email-1": {"keywords/$seen": None}}

@@ -188,13 +188,39 @@
       <span class="pill">{{ forwarders|length }}</span>
     </div>
     {% if forwarders %}
-      <div class="list compact">
+      <div class="list compact mailbox-list">
         {% for forwarder in forwarders %}
-          <div class="list-row static">
-            <div>
+          <div class="list-row static mailbox-row">
+            <div class="mailbox-identity">
               <strong>{{ forwarder.email_address }}</strong>
               <div class="muted small">→ {{ forwarder.destinations|join:", " }}</div>
             </div>
+            {% if can_manage %}
+              <div class="mailbox-admin">
+                <div class="mailbox-actions">
+                  <details class="inline-admin-panel">
+                    <summary class="button small-button">Edit destinations</summary>
+                    <form method="post" action="{% url 'portal-forwarder-update' tenant_slug=tenant.slug domain_pk=domain.pk forwarder_pk=forwarder.pk %}" class="stacked-form compact-admin-form">
+                      {% csrf_token %}
+                      <label for="forwarder-destinations-{{ forwarder.pk }}">Destinations</label>
+                      <textarea id="forwarder-destinations-{{ forwarder.pk }}" name="destinations" rows="4" required>{{ forwarder.destinations|join:", " }}</textarea>
+                      <span class="helptext">Separate addresses with commas or new lines.</span>
+                      <button class="button primary small-button" type="submit">Save destinations</button>
+                    </form>
+                  </details>
+                  <details class="inline-admin-panel danger-panel">
+                    <summary class="button small-button danger-button">Delete</summary>
+                    <form method="post" action="{% url 'portal-forwarder-delete' tenant_slug=tenant.slug domain_pk=domain.pk forwarder_pk=forwarder.pk %}" class="stacked-form compact-admin-form">
+                      {% csrf_token %}
+                      <p class="muted small">This permanently removes the Stalwart mailing list. The address remains reserved in MailForge.</p>
+                      <label for="forwarder-confirm-{{ forwarder.pk }}">Type {{ forwarder.email_address }} to confirm</label>
+                      <input id="forwarder-confirm-{{ forwarder.pk }}" type="email" name="confirm_email" autocomplete="off" required>
+                      <button class="button danger-button small-button" type="submit">Delete forwarder</button>
+                    </form>
+                  </details>
+                </div>
+              </div>
+            {% endif %}
           </div>
         {% endfor %}
       </div>

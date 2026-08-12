@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.audit.models import AuditEvent
+from apps.domains.dns_readiness import check_domain_dns
 from apps.domains.models import Domain, normalize_domain_name
 from apps.domains.provisioning import DomainProvisioningError, provision_domain
 from apps.domains.services import (
@@ -49,6 +50,8 @@ class DomainSerializer(serializers.ModelSerializer):
             "verification_record_name",
             "verification_record_value",
             "verified_at",
+            "dns_checks",
+            "dns_checked_at",
             "created_at",
         )
         read_only_fields = (
@@ -60,6 +63,8 @@ class DomainSerializer(serializers.ModelSerializer):
             "verification_record_name",
             "verification_record_value",
             "verified_at",
+            "dns_checks",
+            "dns_checked_at",
             "created_at",
         )
 
@@ -166,6 +171,27 @@ class TenantDomainProvisionView(APIView):
             {
                 "provisioned": True,
                 "already_provisioned": result.already_provisioned,
+                "domain": DomainSerializer(domain, context={"request": request}).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class TenantDomainDNSCheckView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tenant_slug, pk):
+        tenant, membership = tenant_membership_for_request(request, tenant_slug)
+        if membership.role not in MANAGE_ROLES:
+            raise PermissionDenied("Only tenant owners and administrators can run DNS readiness checks.")
+
+        domain = get_object_or_404(tenant.domains, pk=pk)
+        result = check_domain_dns(domain.pk, actor=request.user)
+        domain.refresh_from_db()
+        return Response(
+            {
+                "ready": result.ready,
+                "checks": result.checks,
                 "domain": DomainSerializer(domain, context={"request": request}).data,
             },
             status=status.HTTP_200_OK,

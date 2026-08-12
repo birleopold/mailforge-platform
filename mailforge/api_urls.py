@@ -12,6 +12,9 @@ from apps.mailboxes.api import (
     TenantForwarderListCreateView,
     TenantMailboxDetailView,
     TenantMailboxListCreateView,
+    TenantMailboxPasswordResetView,
+    TenantMailboxReactivateView,
+    TenantMailboxSuspendView,
 )
 from apps.tenants.api import TenantDetailView, TenantListCreateView
 
@@ -53,6 +56,21 @@ urlpatterns = [
         "tenants/<slug:tenant_slug>/domains/<int:domain_pk>/mailboxes/<int:pk>/",
         TenantMailboxDetailView.as_view(),
         name="tenant-mailbox-detail",
+    ),
+    path(
+        "tenants/<slug:tenant_slug>/domains/<int:domain_pk>/mailboxes/<int:pk>/suspend/",
+        TenantMailboxSuspendView.as_view(),
+        name="tenant-mailbox-suspend",
+    ),
+    path(
+        "tenants/<slug:tenant_slug>/domains/<int:domain_pk>/mailboxes/<int:pk>/reactivate/",
+        TenantMailboxReactivateView.as_view(),
+        name="tenant-mailbox-reactivate",
+    ),
+    path(
+        "tenants/<slug:tenant_slug>/domains/<int:domain_pk>/mailboxes/<int:pk>/password-reset/",
+        TenantMailboxPasswordResetView.as_view(),
+        name="tenant-mailbox-password-reset",
     ),
     path(
         "tenants/<slug:tenant_slug>/domains/<int:domain_pk>/forwarders/",

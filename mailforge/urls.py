@@ -3,7 +3,7 @@ from django.contrib.auth.views import LoginView, LogoutView
 from django.http import JsonResponse
 from django.urls import include, path
 
-from mailforge import membership_views, portal_views, webmail_views
+from mailforge import membership_views, portal_views, suspension_views, webmail_views
 
 
 def health(request):
@@ -73,6 +73,16 @@ urlpatterns = [
         name="portal-tenant",
     ),
     path(
+        "portal/tenants/<slug:tenant_slug>/suspend/",
+        suspension_views.tenant_suspend,
+        name="portal-tenant-suspend",
+    ),
+    path(
+        "portal/tenants/<slug:tenant_slug>/reactivate/",
+        suspension_views.tenant_reactivate,
+        name="portal-tenant-reactivate",
+    ),
+    path(
         "portal/tenants/<slug:tenant_slug>/members/",
         membership_views.member_management,
         name="portal-members",
@@ -106,6 +116,16 @@ urlpatterns = [
         "portal/tenants/<slug:tenant_slug>/domains/<int:domain_pk>/",
         portal_views.domain_detail,
         name="portal-domain",
+    ),
+    path(
+        "portal/tenants/<slug:tenant_slug>/domains/<int:domain_pk>/suspend/",
+        suspension_views.domain_suspend,
+        name="portal-domain-suspend",
+    ),
+    path(
+        "portal/tenants/<slug:tenant_slug>/domains/<int:domain_pk>/reactivate/",
+        suspension_views.domain_reactivate,
+        name="portal-domain-reactivate",
     ),
     path(
         "portal/tenants/<slug:tenant_slug>/domains/<int:domain_pk>/verify/",

@@ -6,6 +6,7 @@ from django.db import IntegrityError, transaction
 from apps.audit.models import AuditEvent
 from apps.domains.models import Domain
 from apps.mailboxes.models import Alias, Mailbox, normalize_local_part
+from apps.tenants.models import Tenant
 from integrations.factory import get_mail_backend
 
 
@@ -33,6 +34,8 @@ def provision_mailbox(
     actor=None,
 ) -> MailboxProvisioningResult:
     domain = Domain.objects.select_related("tenant").get(pk=domain_id)
+    if domain.tenant.status != Tenant.Status.ACTIVE:
+        raise MailboxProvisioningError("The organization is suspended.")
     if not domain.backend_identifier:
         raise MailboxProvisioningError("The domain must be provisioned before mailboxes are created.")
     if domain.status not in {Domain.Status.DNS_CONFIGURATION, Domain.Status.ACTIVE}:
@@ -142,6 +145,10 @@ def reactivate_mailbox(mailbox_id: int, *, backend=None, actor=None) -> Mailbox:
         raise MailboxLifecycleError("Only suspended mailboxes can be reactivated.")
 
     domain = mailbox.domain
+    if domain.tenant.status != Tenant.Status.ACTIVE:
+        raise MailboxLifecycleError("Reactivate the organization before reactivating mailboxes.")
+    if domain.status == Domain.Status.SUSPENDED:
+        raise MailboxLifecycleError("Reactivate the domain before reactivating mailboxes.")
     sending_enabled = domain.sending_enabled and domain.status == Domain.Status.ACTIVE
     resolved_backend = backend or get_mail_backend()
     resolved_backend.set_account_suspended(

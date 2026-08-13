@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+{% load webmail_html %}
+{% block title %}{{ subject }} · Conversation · MailForge{% endblock %}
+{% block content %}
+<a class="back" href="{% url 'webmail-inbox' %}">← Inbox</a>
+<div class="page-heading split-heading">
+  <div>
+    <div class="eyebrow">CONVERSATION</div>
+    <h1>{{ subject }}</h1>
+    <p class="muted">{{ message_count }} message{{ message_count|pluralize }} in this JMAP thread{% if truncated %} · showing first 200{% endif %}</p>
+  </div>
+  <span class="pill large">{{ message_count }}</span>
+</div>
+
+<div class="conversation-list">
+  {% for item in conversation %}
+    {% with email=item.email %}
+    <article class="card conversation-message {% if '$seen' not in email.keywords %}conversation-unread{% endif %}" id="message-{{ email.id }}">
+      <div class="section-heading conversation-heading">
+        <div>
+          <div class="conversation-sender">
+            {% for sender in email.from %}
+              <strong>{{ sender.name|default:sender.email }}</strong>{% if sender.email %} <span class="muted small">&lt;{{ sender.email }}&gt;</span>{% endif %}{% if not forloop.last %}, {% endif %}
+            {% empty %}<strong>Unknown sender</strong>{% endfor %}
+          </div>
+          <div class="muted small">{{ email.receivedAt|default:email.sentAt }}</div>
+        </div>
+        <div class="message-actions">
+          {% if email.hasAttachment %}<span class="pill">Attachment</span>{% endif %}
+          {% if '$seen' not in email.keywords %}<span class="pill status-pending">Unread</span>{% endif %}
+        </div>
+      </div>
+
+      <div class="conversation-recipients small">
+        <strong>To:</strong>
+        {% for recipient in email.to %}
+          {{ recipient.name|default:recipient.email }}{% if recipient.email %} &lt;{{ recipient.email }}&gt;{% endif %}{% if not forloop.last %}, {% endif %}
+        {% empty %}—{% endfor %}
+        {% if email.cc %}
+          <br><strong>Cc:</strong>
+          {% for recipient in email.cc %}
+            {{ recipient.name|default:recipient.email }}{% if recipient.email %} &lt;{{ recipient.email }}&gt;{% endif %}{% if not forloop.last %}, {% endif %}
+          {% endfor %}
+        {% endif %}
+      </div>
+
+      {% sanitized_email_body email item.plain_text_body %}
+
+      {% if email.attachments %}
+        <div class="conversation-attachments">
+          <strong class="small">Attachments</strong>
+          <div class="list compact top-gap-sm">
+            {% for attachment in email.attachments %}
+              <div class="list-row static attachment-row">
+                <div>
+                  <strong>{{ attachment.name|default:"Attachment" }}</strong>
+                  <div class="muted small">{{ attachment.type|default:"application/octet-stream" }} · {{ attachment.size }} bytes</div>
+                </div>
+                {% if attachment.blobId %}
+                  <a class="button small-button" href="{% url 'webmail-attachment' email_id=email.id attachment_index=forloop.counter0 %}">Download</a>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="message-action-bar conversation-actions">
+        <a class="button primary small-button" href="{% url 'webmail-reply' source_id=email.id %}">Reply</a>
+        <a class="button small-button" href="{% url 'webmail-reply-all' source_id=email.id %}">Reply all</a>
+        <a class="button small-button" href="{% url 'webmail-forward' source_id=email.id %}">Forward</a>
+        <a class="button small-button" href="{% url 'webmail-message' email_id=email.id %}">Open message</a>
+      </div>
+    </article>
+    {% endwith %}
+  {% endfor %}
+</div>
+{% endblock %}

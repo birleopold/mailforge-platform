@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+{% block title %}Message actions · MailForge{% endblock %}
+{% block content %}
+<a class="back" href="{% url 'webmail-message' email_id=email.id %}">← Message</a>
+<div class="page-heading">
+  <div class="eyebrow">MESSAGE ACTIONS</div>
+  <h1>{{ email.subject|default:"(no subject)" }}</h1>
+  <p class="muted">Move or classify this message. Permanent deletion is available only after the message is in Trash.</p>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Move message</h2>
+    <form method="post" action="{% url 'webmail-move-message' email_id=email.id %}" class="stacked-form">
+      {% csrf_token %}
+      <label for="mailbox-id">Destination mailbox</label>
+      <select id="mailbox-id" name="mailbox_id" required>
+        <option value="">Choose mailbox</option>
+        {% for target in targets %}
+          <option value="{{ target.id }}" {% if target.id in current_ids %}disabled{% endif %}>
+            {{ target.name }}{% if target.role %} · {{ target.role }}{% endif %}{% if target.id in current_ids %} · current{% endif %}
+          </option>
+        {% endfor %}
+      </select>
+      <button class="button primary" type="submit">Move message</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Common actions</h2>
+    <div class="action-stack">
+      <form method="post" action="{% url 'webmail-archive-message' email_id=email.id %}">
+        {% csrf_token %}
+        <button class="button full" type="submit">Archive</button>
+      </form>
+      <form method="post" action="{% url 'webmail-spam-message' email_id=email.id %}" onsubmit="return confirm('Mark this message as spam?');">
+        {% csrf_token %}
+        <button class="button full" type="submit">Mark as spam</button>
+      </form>
+      <form method="post" action="{% url 'webmail-trash-message' email_id=email.id %}" onsubmit="return confirm('Move this message to Trash?');">
+        {% csrf_token %}
+        <button class="button danger-button full" type="submit">Move to Trash</button>
+      </form>
+    </div>
+  </section>
+</div>
+
+<section class="card top-gap danger-zone">
+  <h2>Permanent deletion</h2>
+  {% if in_trash %}
+    <p class="muted">This message is in Trash. Permanent deletion removes the Email from all mailboxes and cannot be undone.</p>
+    <form method="post" action="{% url 'webmail-delete-message' email_id=email.id %}" onsubmit="return confirm('Permanently delete this message? This cannot be undone.');">
+      {% csrf_token %}
+      <input type="hidden" name="confirm" value="delete">
+      <button class="button danger-button" type="submit">Permanently delete</button>
+    </form>
+  {% else %}
+    <div class="empty">Move the message to Trash before permanent deletion is allowed.</div>
+  {% endif %}
+</section>
+{% endblock %}

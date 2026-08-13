@@ -1,0 +1,18 @@
+{% if remote_images_blocked %}
+  <div class="privacy-notice">
+    <strong>Remote images blocked for privacy.</strong>
+    <span>MailForge does not load image URLs from HTML email bodies.</span>
+  </div>
+{% endif %}
+
+{% if has_html %}
+  <div class="mail-body mail-html-body">{{ sanitized_html }}</div>
+  {% if plain_text_body %}
+    <details class="plain-text-alternative">
+      <summary>View plain-text version</summary>
+      <div class="mail-body mail-plain-body">{{ plain_text_body|linebreaksbr }}</div>
+    </details>
+  {% endif %}
+{% else %}
+  <div class="mail-body mail-plain-body">{{ plain_text_body|linebreaksbr }}</div>
+{% endif %}

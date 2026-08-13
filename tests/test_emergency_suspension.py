@@ -3,10 +3,11 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 
 from apps.audit.models import AuditEvent
+from apps.domains.dns_readiness import check_domain_dns
 from apps.domains.lifecycle import reactivate_domain, suspend_domain
 from apps.domains.models import Domain
-from apps.mailboxes.models import Alias, Mailbox
 from apps.mailboxes.forwarders import ForwarderLifecycleError, update_forwarder
+from apps.mailboxes.models import Alias, Mailbox
 from apps.mailboxes.services import MailboxLifecycleError, reactivate_mailbox
 from apps.tenants.lifecycle import reactivate_tenant, suspend_tenant
 from apps.tenants.models import Tenant, TenantMembership
@@ -28,6 +29,11 @@ class FakeBackend:
             raise RuntimeError("suspend failed")
         if not suspended and str(account_id) in self.fail_unsuspend:
             raise RuntimeError("reactivate failed")
+
+
+class EmptyResolver:
+    def resolve(self, name, record_type, **kwargs):
+        return []
 
 
 def domain_with_mailbox(tenant, *, name, account_id, status=Domain.Status.ACTIVE):
@@ -221,3 +227,32 @@ def test_tenant_reactivation_rolls_back_if_one_domain_cannot_restore():
     assert second.status == Domain.Status.SUSPENDED
     assert ("restore-one", False, False) in backend.calls
     assert ("restore-one", True, False) in backend.calls
+
+
+@pytest.mark.django_db
+def test_periodic_dns_reconciliation_reapplies_full_emergency_suspension():
+    owner = User.objects.create_user(username="reconcile-owner", email="reconcile@example.com")
+    tenant = create_tenant(name="Reconcile Emergency", owner=owner)
+    domain, _ = domain_with_mailbox(
+        tenant,
+        name="reconcile.example",
+        account_id="reconcile-account",
+        status=Domain.Status.SUSPENDED,
+    )
+    backend = FakeBackend()
+
+    result = check_domain_dns(
+        domain.pk,
+        resolver=EmptyResolver(),
+        backend=backend,
+    )
+    domain.refresh_from_db()
+
+    assert result.ready is False
+    assert domain.status == Domain.Status.SUSPENDED
+    assert domain.sending_enabled is False
+    assert result.checks["smtp_policy"]["status"] == "pass"
+    assert result.checks["smtp_policy"]["expected"] == (
+        "All active Stalwart mailbox permissions suspended"
+    )
+    assert backend.calls == [("reconcile-account", True, False)]

@@ -11,7 +11,43 @@
   <span class="pill large status-{{ domain.status }}">{{ domain.get_status_display }}</span>
 </div>
 
-<div class="grid two">
+{% if domain.status == 'suspended' %}
+  <div class="message error">
+    <strong>Emergency suspension active.</strong> Sending is disabled and MailForge has attempted to revoke all permissions from active Stalwart mailboxes on this domain.
+  </div>
+{% endif %}
+
+{% if can_manage and domain.status != 'decommissioned' %}
+<section class="card danger-zone">
+  <div class="section-heading">
+    <div>
+      <h2>Emergency domain control</h2>
+      {% if domain.status == 'suspended' %}
+        <p class="muted small">Reactivation restores mailbox access with sending disabled first. DNS readiness must pass before outbound sending returns.</p>
+      {% else %}
+        <p class="muted small">Use this for a compromised or abusive domain. Active mailbox permissions are revoked in Stalwart immediately where possible.</p>
+      {% endif %}
+    </div>
+    {% if domain.status == 'suspended' %}
+      {% if tenant.status != 'suspended' %}
+      <form method="post" action="{% url 'portal-domain-reactivate' tenant_slug=tenant.slug domain_pk=domain.pk %}">
+        {% csrf_token %}
+        <button class="button primary" type="submit">Reactivate domain</button>
+      </form>
+      {% else %}
+        <span class="pill status-suspended">Reactivate organization first</span>
+      {% endif %}
+    {% else %}
+      <form method="post" action="{% url 'portal-domain-suspend' tenant_slug=tenant.slug domain_pk=domain.pk %}" onsubmit="return confirm('Emergency suspend {{ domain.name|escapejs }}?');">
+        {% csrf_token %}
+        <button class="button danger-button" type="submit">Emergency suspend domain</button>
+      </form>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+<div class="grid two top-gap">
   <section class="card">
     <h2>Ownership verification</h2>
     {% if domain.verified_at %}
@@ -26,7 +62,7 @@
         <div><span>Name</span><code>{{ domain.verification_record_name }}</code></div>
         <div><span>Value</span><code class="wrap">{{ domain.verification_record_value }}</code></div>
       </div>
-      {% if can_manage %}
+      {% if can_manage and tenant.status != 'suspended' and domain.status != 'suspended' %}
       <form method="post" action="{% url 'portal-domain-verify' tenant_slug=tenant.slug domain_pk=domain.pk %}">
         {% csrf_token %}
         <button class="button primary" type="submit">Verify domain</button>
@@ -45,7 +81,7 @@
       <p class="muted">MailForge checks public DNS and synchronizes Stalwart mailbox sending permissions before outbound mail is enabled.</p>
     {% else %}
       <p class="muted">Provisioning creates the verified domain in the native Stalwart server.</p>
-      {% if can_manage and domain.verified_at %}
+      {% if can_manage and domain.verified_at and tenant.status != 'suspended' and domain.status != 'suspended' %}
       <form method="post" action="{% url 'portal-domain-provision' tenant_slug=tenant.slug domain_pk=domain.pk %}">
         {% csrf_token %}
         <button class="button primary" type="submit">Provision in Stalwart</button>
@@ -102,7 +138,7 @@
     <div class="empty">Run a DNS check after your public records have been added.</div>
   {% endif %}
 
-  {% if can_manage and domain.backend_identifier %}
+  {% if can_manage and domain.backend_identifier and tenant.status != 'suspended' and domain.status != 'suspended' %}
     <form method="post" action="{% url 'portal-domain-dns-check' tenant_slug=tenant.slug domain_pk=domain.pk %}" class="top-gap-sm">
       {% csrf_token %}
       <button class="button primary" type="submit">Check DNS readiness</button>
@@ -126,7 +162,7 @@
             </div>
             <div class="mailbox-admin">
               <span class="pill status-{{ mailbox.status }}">{{ mailbox.get_status_display }}</span>
-              {% if can_manage %}
+              {% if can_manage and tenant.status != 'suspended' and domain.status != 'suspended' %}
                 <div class="mailbox-actions">
                   {% if mailbox.status == 'active' %}
                     <form method="post" action="{% url 'portal-mailbox-suspend' tenant_slug=tenant.slug domain_pk=domain.pk mailbox_pk=mailbox.pk %}">
@@ -170,7 +206,7 @@
       <div class="empty">No mailboxes yet.</div>
     {% endif %}
 
-    {% if can_manage and domain.backend_identifier %}
+    {% if can_manage and domain.backend_identifier and tenant.status != 'suspended' and domain.status != 'suspended' %}
       <hr>
       <h3>Create mailbox</h3>
       <form method="post" action="{% url 'portal-mailbox-create' tenant_slug=tenant.slug domain_pk=domain.pk %}" class="stacked-form">
@@ -195,7 +231,7 @@
               <strong>{{ forwarder.email_address }}</strong>
               <div class="muted small">→ {{ forwarder.destinations|join:", " }}</div>
             </div>
-            {% if can_manage %}
+            {% if can_manage and tenant.status != 'suspended' and domain.status != 'suspended' %}
               <div class="mailbox-admin">
                 <div class="mailbox-actions">
                   <details class="inline-admin-panel">
@@ -228,7 +264,7 @@
       <div class="empty">No forwarders yet.</div>
     {% endif %}
 
-    {% if can_manage and domain.backend_identifier %}
+    {% if can_manage and domain.backend_identifier and tenant.status != 'suspended' and domain.status != 'suspended' %}
       <hr>
       <h3>Create forwarder</h3>
       <form method="post" action="{% url 'portal-forwarder-create' tenant_slug=tenant.slug domain_pk=domain.pk %}" class="stacked-form">

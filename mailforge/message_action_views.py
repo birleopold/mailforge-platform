@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import redirect
+from django.http import Http404
+from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 
 from integrations.stalwart.mail_jmap import MailJMAPError
 from mailforge.message_actions import (
     MessageActionError,
     archive_message,
+    mailbox_targets,
     move_message,
     permanently_delete_message,
     spam_message,
@@ -34,6 +36,31 @@ def _action_error(request, exc):
 
 
 @login_required
+def webmail_message_actions(request, email_id):
+    client, account_id = _client_and_account(request)
+    if client is None:
+        return redirect("webmail-home")
+    try:
+        email = client.get_email(account_id, str(email_id))
+        targets = mailbox_targets(client, account_id=account_id)
+    except MailJMAPError:
+        raise Http404 from None
+
+    current_ids = set((email.get("mailboxIds") or {}).keys())
+    trash = next((mailbox for mailbox in targets if mailbox.role == "trash"), None)
+    return render(
+        request,
+        "webmail/message_actions.html",
+        {
+            "email": email,
+            "targets": targets,
+            "current_ids": current_ids,
+            "in_trash": bool(trash and trash.id in current_ids),
+        },
+    )
+
+
+@login_required
 @require_POST
 def webmail_move_message(request, email_id):
     client, account_id = _client_and_account(request)
@@ -42,7 +69,7 @@ def webmail_move_message(request, email_id):
     mailbox_id = (request.POST.get("mailbox_id") or "").strip()
     if not mailbox_id:
         messages.error(request, "Choose a destination mailbox.")
-        return redirect("webmail-message", email_id=email_id)
+        return redirect("webmail-message-actions", email_id=email_id)
     try:
         target = move_message(
             client,
@@ -106,7 +133,7 @@ def webmail_permanently_delete_message(request, email_id):
         return redirect("webmail-home")
     if request.POST.get("confirm") != "delete":
         messages.error(request, "Permanent deletion confirmation was missing.")
-        return redirect("webmail-message", email_id=email_id)
+        return redirect("webmail-message-actions", email_id=email_id)
     try:
         permanently_delete_message(client, account_id=account_id, email_id=email_id)
     except (MessageActionError, MailJMAPError) as exc:

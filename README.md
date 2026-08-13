@@ -14,7 +14,7 @@ Each customer/domain stays logically separated in MailForge, while the actual ma
 
 ## Why Stalwart
 
-Stalwart runs as a native Linux service and provides SMTP, IMAP, JMAP, CalDAV, CardDAV, WebDAV, filtering, DKIM and modern account/domain management APIs. MailForge uses Django as the customer-facing control plane and is building its own webmail experience over user-scoped JMAP access.
+Stalwart runs as a native Linux service and provides SMTP, IMAP, JMAP, CalDAV, CardDAV, WebDAV, filtering, DKIM and modern account/domain management APIs. MailForge uses Django as the customer-facing control plane and builds its own webmail experience over user-scoped JMAP access.
 
 **Docker is not required by this project.**
 
@@ -64,8 +64,11 @@ The current `main` branch includes:
 ### Control plane
 
 - Django login and browser management portal;
-- isolated organizations/tenants and owner memberships;
+- isolated organizations/tenants with owner, administrator, billing and viewer roles;
 - tenant-scoped REST API;
+- expiring tenant invitations with one-time tokens whose raw values are never stored in the database;
+- invited-only portal account creation and invitation acceptance bound to the invited email address;
+- invitation revocation, member role changes and member removal with owner protections;
 - domain normalization and global uniqueness;
 - DNS TXT ownership verification;
 - retry-safe Celery verification jobs;
@@ -78,11 +81,12 @@ The current `main` branch includes:
 - forwarding addresses backed by Stalwart mailing lists;
 - forwarder destination update and confirmed deletion through both REST and the browser portal;
 - deleted forwarder addresses retained as inactive MailForge tombstones rather than silently recycled;
+- emergency tenant/domain suspension and rollback-safe reactivation controls;
 - protection against mailbox/forwarder address collisions and self-forwarding loops;
-- audit events for privileged provisioning and lifecycle actions;
+- audit events for privileged provisioning, membership and lifecycle actions;
 - Django admin operator console.
 
-### DNS and sending readiness
+### DNS, transport security and sending readiness
 
 - persisted DNS readiness snapshots per domain;
 - Stalwart-generated DNS zone discovery and refresh;
@@ -91,25 +95,32 @@ The current `main` branch includes:
 - exact DKIM validation against Stalwart's current generated `_domainkey` TXT records, including rotated selectors and split TXT chunks;
 - DMARC validation;
 - optional production PTR/rDNS enforcement when the server public IPv4 is configured;
+- MTA-STS TXT and HTTPS policy validation, including policy syntax and public-MX coverage;
+- TLS-RPT TXT/report-endpoint validation;
+- MTA-STS and TLS-RPT are currently recommended, non-gating checks;
 - automatic transition between DNS configuration and active states;
 - backend-enforced sending gate using Stalwart's per-account `emailSend` permission;
 - new mailboxes created with sending already disabled when their domain is not ready;
 - existing MailForge-managed mailboxes synchronized whenever readiness is checked;
 - periodic Celery readiness reconciliation, configurable with `MAILFORGE_DNS_RECONCILE_MINUTES` (15 minutes by default);
+- emergency-suspended domains use the stronger full Stalwart mailbox-permission revocation during periodic reconciliation rather than the normal send-only block;
 - audit events when sending readiness changes.
 
-### MailForge webmail MVP
+### MailForge webmail
 
 - separate user-scoped Stalwart OAuth Authorization Code + PKCE connection flow;
 - OAuth access/refresh tokens encrypted before storage in the Django session;
 - JMAP session discovery and primary mail-account selection;
 - mailbox/folder sidebar and unread counts;
 - recent message list;
+- server-side mail search;
 - safe plain-text message reader;
-- raw HTML email deliberately not rendered yet;
+- sanitized HTML email rendering using a strict allowlist;
+- scripts, iframes, embedded objects, SVG, forms, inline styles, event handlers and unsafe URL schemes removed from HTML mail;
+- remote images are not loaded, preventing ordinary tracking-pixel requests, and MailForge displays a privacy notice when images were blocked;
+- plain-text alternatives remain available when supplied by the message;
 - automatic mark-as-read when a message is opened;
 - mark-unread action;
-- server-side JMAP mail search;
 - validated compose form with To/Cc/Bcc;
 - sending identity restricted to identities returned by Stalwart;
 - reply, reply-all and forward with recipient de-duplication and self-address exclusion;
@@ -126,17 +137,22 @@ The current `main` branch includes:
 
 - native Stalwart Ubuntu installer helper;
 - native Gunicorn, Celery worker and Celery beat systemd service examples;
+- configurable SMTP delivery for tenant invitation emails;
 - Nginx reverse-proxy example;
 - Windows and Ubuntu no-Docker quick start;
 - GitHub Actions lint, Django checks, migration-drift check and pytest suite.
 
 ## Current security boundary
 
-MailForge now enforces sending readiness in both the webmail UI and Stalwart-managed mailbox accounts. If required DNS health is not ready, MailForge applies an explicit Stalwart `emailSend` denial to active MailForge-managed users; when readiness becomes healthy again, the user-role sending permission is restored. The periodic Celery reconciliation repeats these checks so DNS degradation does not depend only on a manual portal action.
+MailForge enforces normal sending readiness in both the webmail UI and Stalwart-managed mailbox accounts. If required DNS health is not ready, MailForge applies an explicit Stalwart `emailSend` denial to active MailForge-managed users; when readiness becomes healthy again, the user-role sending permission is restored. Periodic Celery reconciliation repeats these checks so DNS degradation does not depend on a manual portal action.
 
-Mailbox suspension removes inherited account permissions while preserving the account and stored mail; reactivation restores the account while still respecting the domain's current sending readiness. Password-reset input is sent to Stalwart and is not stored in MailForge. Permanent mailbox and forwarder deletions leave reserved tombstones in MailForge to avoid accidentally assigning a historical address to a different person.
+Emergency domain suspension is intentionally stronger: MailForge marks the domain fail-closed, disables sending and attempts to replace all active Stalwart mailbox permissions with an empty permission set. Organization suspension cascades the same protection across its domains. Periodic reconciliation re-applies this full suspension, and reactivation restores mailbox access with sending disabled before normal DNS readiness can restore `emailSend`.
 
-These backend controls still need live validation against the exact Stalwart version used on the production VPS before public onboarding. Abuse rate limits, anomaly detection and emergency domain suspension workflows also remain required before open signup.
+Tenant invitation tokens are stored only as SHA-256 digests, expire automatically and are accepted only by the invited email identity. New portal account creation is not open signup; it is available only through a valid invitation.
+
+HTML mail is sanitized before it reaches a template-safe boundary. Remote image elements are removed rather than fetched, and risky active/embedded content is stripped.
+
+These controls still need live validation against the exact Stalwart version used on the production VPS before public onboarding. Per-mailbox/per-tenant rate limits, abuse/anomaly detection, backup/restore drills, queue/reputation monitoring and real-domain deliverability tests remain required before open signup.
 
 ## Domain onboarding
 
@@ -147,9 +163,10 @@ These backend controls still need live validation against the exact Stalwart ver
 5. Configure the public mail hostname/IP in MailForge production settings.
 6. Publish the MX, SPF, Stalwart-generated DKIM and DMARC records plus provider-managed PTR/rDNS.
 7. Run **Check DNS readiness** from the domain screen.
-8. Create mailboxes and forwarders. Mailboxes created before readiness remain unable to send.
-9. Connect a mailbox to MailForge Webmail through Stalwart OAuth.
-10. Sending becomes available only after the required DNS checks and Stalwart mailbox-policy synchronization succeed.
+8. Optionally publish MTA-STS and TLS-RPT; MailForge validates them as recommended transport-security checks.
+9. Create mailboxes and forwarders. Mailboxes created before readiness remain unable to send.
+10. Connect a mailbox to MailForge Webmail through Stalwart OAuth.
+11. Sending becomes available only after the required DNS checks and Stalwart mailbox-policy synchronization succeed.
 
 ## Quick local start on Windows
 
@@ -189,7 +206,7 @@ Examples are under `deploy/systemd/` and `deploy/nginx/`.
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
-The next major milestone is a real Ubuntu/Stalwart VPS integration with a real domain, followed by MTA-STS/TLS-RPT, safe HTML rendering, emergency suspension, abuse/rate controls and real deliverability tests to major providers.
+The next major production milestone is a real Ubuntu/Stalwart VPS integration with a real domain, followed by queue/reputation monitoring, per-mailbox/per-tenant abuse limits, real deliverability tests and the remaining webmail workflow features such as conversation view, draft autosave and message filing actions.
 
 ## Security warning
 

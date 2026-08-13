@@ -62,11 +62,12 @@ def _thread_emails(client, *, account_id: str, email_ids: list[str]) -> list[dic
     if not email_ids:
         return []
 
+    selected_ids = email_ids[-200:]
     by_id = {}
     # Keep batches below common maxObjectsInGet values while preserving the
     # server-defined chronological Thread/emailIds order in the final result.
-    for offset in range(0, min(len(email_ids), 200), 50):
-        batch = email_ids[offset : offset + 50]
+    for offset in range(0, len(selected_ids), 50):
+        batch = selected_ids[offset : offset + 50]
         responses = client.call(
             [
                 [
@@ -88,7 +89,7 @@ def _thread_emails(client, *, account_id: str, email_ids: list[str]) -> list[dic
             if email.get("id"):
                 by_id[str(email["id"])] = email
 
-    return [by_id[email_id] for email_id in email_ids[:200] if email_id in by_id]
+    return [by_id[email_id] for email_id in selected_ids if email_id in by_id]
 
 
 @login_required
@@ -118,7 +119,7 @@ def webmail_thread(request, thread_id):
     if truncated:
         messages.warning(
             request,
-            "This conversation is very large. MailForge is showing the first 200 messages.",
+            "This conversation is very large. MailForge is showing the latest 200 messages.",
         )
 
     return render(

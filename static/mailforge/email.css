@@ -55,3 +55,64 @@
 .plain-text-alternative .mail-body {
   padding-bottom: 6px;
 }
+
+.conversation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.conversation-message {
+  padding: 20px 22px;
+}
+
+.conversation-message.conversation-unread {
+  border-color: #c6d1f3;
+  box-shadow: 0 10px 30px rgba(52, 87, 213, 0.09);
+}
+
+.conversation-heading {
+  align-items: flex-start;
+}
+
+.conversation-sender {
+  overflow-wrap: anywhere;
+}
+
+.conversation-recipients {
+  margin-top: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.conversation-message .mail-body {
+  padding: 20px 0;
+}
+
+.conversation-attachments {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.conversation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 760px) {
+  .conversation-message {
+    padding: 17px;
+  }
+
+  .conversation-heading {
+    flex-direction: column;
+  }
+}

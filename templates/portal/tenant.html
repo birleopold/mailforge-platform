@@ -2,12 +2,13 @@
 {% block title %}{{ tenant.name }} · MailForge{% endblock %}
 {% block content %}
 <a class="back" href="{% url 'dashboard' %}">← Organizations</a>
-<div class="page-heading">
+<div class="page-heading split-heading">
   <div>
     <div class="eyebrow">{{ membership.get_role_display }}</div>
     <h1>{{ tenant.name }}</h1>
     <p class="muted">Plan: {{ tenant.plan_code }} · Status: {{ tenant.get_status_display }}</p>
   </div>
+  <a class="button" href="{% url 'portal-members' tenant_slug=tenant.slug %}">Manage members</a>
 </div>
 
 <div class="grid two">

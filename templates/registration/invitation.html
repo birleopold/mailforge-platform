@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}Organization invitation · MailForge{% endblock %}
+{% block content %}
+<section class="card narrow invitation-card">
+  <div class="eyebrow">MAILFORGE INVITATION</div>
+  {% if invitation %}
+    <h1>Join {{ invitation.tenant.name }}</h1>
+    <p class="muted">You were invited as <strong>{{ invitation.get_role_display }}</strong> using <strong>{{ invitation.email }}</strong>.</p>
+  {% else %}
+    <h1>Invitation unavailable</h1>
+  {% endif %}
+
+  {% if invitation_error %}
+    <div class="message error">{{ invitation_error }}</div>
+  {% elif user.is_authenticated %}
+    <form method="post" class="stacked-form">
+      {% csrf_token %}
+      <button class="button primary full" type="submit">Accept invitation</button>
+    </form>
+  {% elif login_url %}
+    <p class="muted">A MailForge account already uses this email address. Sign in to that account, then return here to accept the invitation.</p>
+    <a class="button primary full" href="{{ login_url }}">Sign in to accept</a>
+  {% elif signup_form %}
+    <p class="muted">Create your portal account. This signup is available only because you have a valid invitation.</p>
+    <form method="post" class="stacked-form">
+      {% csrf_token %}
+      {{ signup_form.as_p }}
+      <button class="button primary full" type="submit">Create account and join</button>
+    </form>
+  {% endif %}
+
+  {% if invitation %}
+    <p class="muted small top-gap-sm">This invitation expires {{ invitation.expires_at|date:"M j, Y H:i T" }}.</p>
+  {% endif %}
+</section>
+{% endblock %}

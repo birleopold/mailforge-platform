@@ -100,15 +100,15 @@ def test_thread_email_fetch_restores_thread_order_and_batches_at_fifty():
     assert len(email_get_calls[2][0][1]["ids"]) == 20
 
 
-def test_thread_email_fetch_caps_rendering_at_two_hundred_messages():
+def test_thread_email_fetch_caps_rendering_at_latest_two_hundred_messages():
     email_ids = [f"e-{index:03d}" for index in range(250)]
     client = ScriptedThreadClient(email_ids=email_ids)
 
     emails = _thread_emails(client, account_id="account-1", email_ids=email_ids)
 
     assert len(emails) == 200
-    assert emails[0]["id"] == "e-000"
-    assert emails[-1]["id"] == "e-199"
+    assert emails[0]["id"] == "e-050"
+    assert emails[-1]["id"] == "e-249"
 
 
 @pytest.mark.django_db

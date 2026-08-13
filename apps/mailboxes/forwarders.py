@@ -8,6 +8,7 @@ from django.db import IntegrityError, transaction
 from apps.audit.models import AuditEvent
 from apps.domains.models import Domain
 from apps.mailboxes.models import Alias, Mailbox, normalize_local_part
+from apps.tenants.models import Tenant
 from integrations.factory import get_mail_backend
 
 
@@ -53,6 +54,8 @@ def provision_forwarder(
     actor=None,
 ) -> ForwarderProvisioningResult:
     domain = Domain.objects.select_related("tenant").get(pk=domain_id)
+    if domain.tenant.status != Tenant.Status.ACTIVE:
+        raise ForwarderProvisioningError("The organization is suspended.")
     if not domain.backend_identifier:
         raise ForwarderProvisioningError("The domain must be provisioned before forwarders are created.")
     if domain.status not in {Domain.Status.DNS_CONFIGURATION, Domain.Status.ACTIVE}:
@@ -119,6 +122,13 @@ def _active_forwarder(alias_id: int) -> Alias:
     return alias
 
 
+def _ensure_forwarder_operational(alias: Alias):
+    if alias.domain.tenant.status != Tenant.Status.ACTIVE:
+        raise ForwarderLifecycleError("Reactivate the organization before changing forwarders.")
+    if alias.domain.status == Domain.Status.SUSPENDED:
+        raise ForwarderLifecycleError("Reactivate the domain before changing forwarders.")
+
+
 def update_forwarder(
     alias_id: int,
     *,
@@ -127,6 +137,7 @@ def update_forwarder(
     actor=None,
 ) -> Alias:
     alias = _active_forwarder(alias_id)
+    _ensure_forwarder_operational(alias)
     try:
         destinations = normalize_destinations(destinations)
     except ForwarderProvisioningError as exc:
@@ -158,6 +169,7 @@ def update_forwarder(
 
 def delete_forwarder(alias_id: int, *, backend=None, actor=None) -> Alias:
     alias = _active_forwarder(alias_id)
+    _ensure_forwarder_operational(alias)
     resolved_backend = backend or get_mail_backend()
     resolved_backend.delete_alias(alias_id=alias.backend_identifier)
     Alias.objects.filter(pk=alias.pk, active=True).update(active=False)

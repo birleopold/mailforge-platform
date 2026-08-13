@@ -15,7 +15,12 @@ from django.utils import timezone
 
 from apps.audit.models import AuditEvent
 from apps.domains.models import Domain
-from apps.domains.sending_policy import sync_domain_sending_policy
+from apps.domains.sending_policy import (
+    sync_domain_emergency_suspension,
+    sync_domain_sending_policy,
+)
+from apps.domains.transport_security import check_mta_sts, check_tls_reporting
+from apps.tenants.models import Tenant
 from integrations.factory import (
     MailBackendConfigurationError,
     UnsupportedMailBackend,
@@ -314,6 +319,7 @@ def inspect_domain_dns(
     *,
     resolver=None,
     dkim_records: list[dict[str, str]] | None = None,
+    http_get=None,
 ) -> DNSReadinessResult:
     resolver = resolver or dns.resolver.Resolver()
     mail_hostname = settings.MAILFORGE_MAIL_HOSTNAME.strip().rstrip(".").lower()
@@ -325,6 +331,8 @@ def inspect_domain_dns(
         "dkim": _check_dkim(resolver, dkim_records),
         "dmarc": _check_dmarc(resolver, domain_name),
         "ptr": _check_ptr(resolver, mail_ipv4, mail_hostname),
+        "mta_sts": check_mta_sts(resolver, domain_name, http_get=http_get),
+        "tls_rpt": check_tls_reporting(resolver, domain_name),
     }
     ready = all(
         check["status"] == "pass"
@@ -340,6 +348,7 @@ def check_domain_dns(
     actor=None,
     resolver=None,
     backend=None,
+    http_get=None,
 ) -> DNSReadinessResult:
     domain = Domain.objects.select_related("tenant").get(pk=domain_id)
     zone_file = _refresh_dns_zone_file(domain, backend=backend)
@@ -348,29 +357,41 @@ def check_domain_dns(
         domain.name,
         resolver=resolver,
         dkim_records=dkim_records,
+        http_get=http_get,
     )
 
+    emergency_suspended = bool(
+        domain.status == Domain.Status.SUSPENDED
+        or domain.tenant.status == Tenant.Status.SUSPENDED
+    )
     should_backend_send = bool(
-        dns_result.ready
+        not emergency_suspended
+        and dns_result.ready
         and domain.verified_at
         and domain.backend_identifier
-        and domain.status not in {Domain.Status.SUSPENDED, Domain.Status.DECOMMISSIONED}
+        and domain.status != Domain.Status.DECOMMISSIONED
     )
-    policy = sync_domain_sending_policy(
-        domain,
-        enabled=should_backend_send,
-        backend=backend,
-    )
+    if emergency_suspended:
+        policy = sync_domain_emergency_suspension(domain, backend=backend)
+        policy_expected = "All active Stalwart mailbox permissions suspended"
+    else:
+        policy = sync_domain_sending_policy(
+            domain,
+            enabled=should_backend_send,
+            backend=backend,
+        )
+        policy_expected = "emailSend enabled" if should_backend_send else "emailSend disabled"
+
     checks = dict(dns_result.checks)
     checks["smtp_policy"] = {
         "status": "pass" if policy.success else "fail",
         "required": True,
-        "expected": "emailSend enabled" if should_backend_send else "emailSend disabled",
+        "expected": policy_expected,
         "observed": list(policy.failed_addresses),
         "detail": policy.detail,
     }
     result = DNSReadinessResult(
-        ready=dns_result.ready and policy.success,
+        ready=(not emergency_suspended) and dns_result.ready and policy.success,
         checks=checks,
     )
     now = timezone.now()
@@ -380,6 +401,7 @@ def check_domain_dns(
         previous_sending = locked.sending_enabled
         can_send = bool(
             result.ready
+            and locked.tenant.status == Tenant.Status.ACTIVE
             and locked.verified_at
             and locked.backend_identifier
             and locked.status not in {Domain.Status.SUSPENDED, Domain.Status.DECOMMISSIONED}
@@ -389,7 +411,10 @@ def check_domain_dns(
         locked.sending_enabled = can_send
         update_fields = ["dns_checks", "dns_checked_at", "sending_enabled"]
 
-        if locked.status not in {Domain.Status.SUSPENDED, Domain.Status.DECOMMISSIONED}:
+        if (
+            locked.tenant.status == Tenant.Status.ACTIVE
+            and locked.status not in {Domain.Status.SUSPENDED, Domain.Status.DECOMMISSIONED}
+        ):
             next_status = Domain.Status.ACTIVE if can_send else (
                 Domain.Status.DNS_CONFIGURATION if locked.backend_identifier else locked.status
             )

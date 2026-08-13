@@ -11,6 +11,12 @@
   <a class="button" href="{% url 'portal-members' tenant_slug=tenant.slug %}">Manage members</a>
 </div>
 
+{% if tenant.status == 'suspended' %}
+  <div class="message error">
+    <strong>Emergency suspension active.</strong> MailForge is keeping this organization's domains and active mailbox accounts suspended until the owner reactivates it.
+  </div>
+{% endif %}
+
 <div class="grid two">
   <section class="card">
     <h2>Domains</h2>
@@ -31,7 +37,7 @@
     {% endif %}
   </section>
 
-  {% if can_manage %}
+  {% if can_manage and tenant.status != 'suspended' %}
   <section class="card">
     <h2>Add domain</h2>
     <p class="muted">MailForge will require a DNS TXT challenge before the domain can be provisioned.</p>
@@ -43,4 +49,23 @@
   </section>
   {% endif %}
 </div>
+
+{% if membership.role == 'owner' %}
+<section class="card top-gap danger-zone">
+  <h2>Emergency controls</h2>
+  {% if tenant.status == 'suspended' %}
+    <p class="muted">Reactivation restores mailbox access first with sending disabled, then each provisioned domain must pass the normal DNS and Stalwart sending-policy checks before outbound mail is enabled.</p>
+    <form method="post" action="{% url 'portal-tenant-reactivate' tenant_slug=tenant.slug %}">
+      {% csrf_token %}
+      <button class="button primary" type="submit">Reactivate organization</button>
+    </form>
+  {% else %}
+    <p class="muted">Use this when an organization may be compromised or abusive. MailForge will immediately disable sending and attempt to revoke all active Stalwart mailbox permissions across every domain.</p>
+    <form method="post" action="{% url 'portal-tenant-suspend' tenant_slug=tenant.slug %}" onsubmit="return confirm('Emergency suspend {{ tenant.name|escapejs }} and all of its domains?');">
+      {% csrf_token %}
+      <button class="button danger-button" type="submit">Emergency suspend organization</button>
+    </form>
+  {% endif %}
+</section>
+{% endif %}
 {% endblock %}

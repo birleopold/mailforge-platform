@@ -16,12 +16,39 @@ from apps.mailboxes.api import (
     TenantMailboxReactivateView,
     TenantMailboxSuspendView,
 )
-from apps.tenants.api import TenantDetailView, TenantListCreateView
+from apps.tenants.api import (
+    TenantDetailView,
+    TenantInvitationDetailView,
+    TenantInvitationListCreateView,
+    TenantListCreateView,
+    TenantMemberDetailView,
+    TenantMemberListView,
+)
 
 
 urlpatterns = [
     path("tenants/", TenantListCreateView.as_view(), name="tenant-list-create"),
     path("tenants/<slug:slug>/", TenantDetailView.as_view(), name="tenant-detail"),
+    path(
+        "tenants/<slug:tenant_slug>/members/",
+        TenantMemberListView.as_view(),
+        name="tenant-member-list",
+    ),
+    path(
+        "tenants/<slug:tenant_slug>/members/<int:pk>/",
+        TenantMemberDetailView.as_view(),
+        name="tenant-member-detail",
+    ),
+    path(
+        "tenants/<slug:tenant_slug>/invitations/",
+        TenantInvitationListCreateView.as_view(),
+        name="tenant-invitation-list-create",
+    ),
+    path(
+        "tenants/<slug:tenant_slug>/invitations/<int:pk>/",
+        TenantInvitationDetailView.as_view(),
+        name="tenant-invitation-detail",
+    ),
     path(
         "tenants/<slug:tenant_slug>/domains/",
         TenantDomainListCreateView.as_view(),

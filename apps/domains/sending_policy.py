@@ -16,17 +16,33 @@ class SendingPolicySyncResult:
     detail: str = ""
 
 
+def _active_provisioned_mailboxes(domain):
+    return list(
+        domain.mailboxes.filter(status=Mailbox.Status.ACTIVE)
+        .exclude(backend_identifier="")
+        .order_by("local_part")
+    )
+
+
+def _resolve_backend(mailboxes, backend):
+    try:
+        return backend or get_mail_backend(), None
+    except (MailBackendConfigurationError, UnsupportedMailBackend):
+        return None, SendingPolicySyncResult(
+            success=False,
+            mailbox_count=len(mailboxes),
+            failed_addresses=tuple(mailbox.email_address for mailbox in mailboxes),
+            detail="The Stalwart management backend is not configured for mailbox policy enforcement.",
+        )
+
+
 def sync_domain_sending_policy(
     domain,
     *,
     enabled: bool,
     backend=None,
 ) -> SendingPolicySyncResult:
-    mailboxes = list(
-        domain.mailboxes.filter(status=Mailbox.Status.ACTIVE)
-        .exclude(backend_identifier="")
-        .order_by("local_part")
-    )
+    mailboxes = _active_provisioned_mailboxes(domain)
     if not mailboxes:
         return SendingPolicySyncResult(
             success=True,
@@ -34,15 +50,9 @@ def sync_domain_sending_policy(
             detail="No active provisioned mailboxes require SMTP policy synchronization.",
         )
 
-    try:
-        backend = backend or get_mail_backend()
-    except (MailBackendConfigurationError, UnsupportedMailBackend):
-        return SendingPolicySyncResult(
-            success=False,
-            mailbox_count=len(mailboxes),
-            failed_addresses=tuple(mailbox.email_address for mailbox in mailboxes),
-            detail="The Stalwart management backend is not configured for SMTP policy enforcement.",
-        )
+    backend, error = _resolve_backend(mailboxes, backend)
+    if error is not None:
+        return error
 
     setter = getattr(backend, "set_account_sending_enabled", None)
     if setter is None:
@@ -73,4 +83,54 @@ def sync_domain_sending_policy(
         success=True,
         mailbox_count=len(mailboxes),
         detail=f"Stalwart emailSend permission is {state} for all active MailForge mailboxes.",
+    )
+
+
+def sync_domain_emergency_suspension(domain, *, backend=None) -> SendingPolicySyncResult:
+    """Re-apply the stronger all-permissions suspension used by emergency controls."""
+    mailboxes = _active_provisioned_mailboxes(domain)
+    if not mailboxes:
+        return SendingPolicySyncResult(
+            success=True,
+            mailbox_count=0,
+            detail="No active provisioned mailboxes require emergency suspension synchronization.",
+        )
+
+    backend, error = _resolve_backend(mailboxes, backend)
+    if error is not None:
+        return error
+
+    setter = getattr(backend, "set_account_suspended", None)
+    if setter is None:
+        return SendingPolicySyncResult(
+            success=False,
+            mailbox_count=len(mailboxes),
+            failed_addresses=tuple(mailbox.email_address for mailbox in mailboxes),
+            detail="The configured mail backend cannot enforce emergency mailbox suspension.",
+        )
+
+    failures = []
+    for mailbox in mailboxes:
+        try:
+            setter(
+                account_id=mailbox.backend_identifier,
+                suspended=True,
+                sending_enabled=False,
+            )
+        except Exception:
+            failures.append(mailbox.email_address)
+
+    if failures:
+        return SendingPolicySyncResult(
+            success=False,
+            mailbox_count=len(mailboxes),
+            failed_addresses=tuple(failures),
+            detail="Emergency Stalwart suspension synchronization failed for: "
+            + ", ".join(failures),
+        )
+
+    return SendingPolicySyncResult(
+        success=True,
+        mailbox_count=len(mailboxes),
+        detail="Emergency suspension is enforced for all active MailForge mailbox accounts.",
     )

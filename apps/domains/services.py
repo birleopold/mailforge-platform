@@ -9,10 +9,15 @@ from django.utils import timezone
 
 from apps.audit.models import AuditEvent
 from apps.domains.models import Domain
+from apps.tenants.models import Tenant
 
 
 class DomainVerificationTemporaryError(RuntimeError):
     """Raised when DNS verification should be retried later."""
+
+
+class DomainVerificationBlockedError(RuntimeError):
+    """Raised when emergency suspension intentionally blocks verification state changes."""
 
 
 @dataclass(frozen=True)
@@ -58,6 +63,10 @@ class DomainOwnershipVerifier:
 def verify_domain_and_record(domain_id: int, *, verifier=None) -> VerificationResult:
     """Verify a domain and persist the successful transition exactly once."""
     domain = Domain.objects.select_related("tenant").get(pk=domain_id)
+    if domain.tenant.status != Tenant.Status.ACTIVE:
+        raise DomainVerificationBlockedError("Reactivate the organization before verifying domains.")
+    if domain.status == Domain.Status.SUSPENDED:
+        raise DomainVerificationBlockedError("Reactivate the domain before verifying ownership.")
     if domain.verified_at is not None:
         return VerificationResult(True, (), already_verified=True)
 

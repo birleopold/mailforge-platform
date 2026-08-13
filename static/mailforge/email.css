@@ -107,6 +107,16 @@
   border-top: 1px solid var(--border);
 }
 
+.action-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.action-stack form {
+  margin: 0;
+}
+
 @media (max-width: 760px) {
   .conversation-message {
     padding: 17px;

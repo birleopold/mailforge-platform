@@ -5,6 +5,7 @@ from django.db import transaction
 
 from apps.audit.models import AuditEvent
 from apps.domains.models import Domain
+from apps.tenants.models import Tenant
 from integrations.factory import get_mail_backend
 
 
@@ -33,6 +34,10 @@ def _domain_dns_zone_file(backend, backend_identifier: str) -> str:
 
 def provision_domain(domain_id: int, *, backend=None, actor=None) -> DomainProvisioningResult:
     domain = Domain.objects.select_related("tenant").get(pk=domain_id)
+    if domain.tenant.status != Tenant.Status.ACTIVE:
+        raise DomainProvisioningError("Reactivate the organization before provisioning domains.")
+    if domain.status == Domain.Status.SUSPENDED:
+        raise DomainProvisioningError("Reactivate the domain before provisioning it.")
     if domain.verified_at is None:
         raise DomainProvisioningError("Domain ownership must be verified before provisioning.")
     if domain.backend_identifier:

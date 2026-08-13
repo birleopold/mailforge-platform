@@ -96,6 +96,17 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+EMAIL_BACKEND = os.environ.get(
+    "DJANGO_EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend",
+)
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "localhost")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "1") == "1"
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@mailforge.local")
+
 MAILFORGE_DEFAULT_MAX_MAILBOXES = int(os.environ.get("MAILFORGE_DEFAULT_MAX_MAILBOXES", "25"))
 MAILFORGE_DEFAULT_DOMAIN_QUOTA_MB = int(
     os.environ.get("MAILFORGE_DEFAULT_DOMAIN_QUOTA_MB", "102400")
@@ -121,6 +132,10 @@ MAILFORGE_MAX_TOTAL_ATTACHMENT_MB = int(
 MAILFORGE_DNS_RECONCILE_MINUTES = max(
     1,
     int(os.environ.get("MAILFORGE_DNS_RECONCILE_MINUTES", "15")),
+)
+MAILFORGE_INVITATION_HOURS = max(
+    1,
+    int(os.environ.get("MAILFORGE_INVITATION_HOURS", "72")),
 )
 
 CELERY_BROKER_URL = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/0")

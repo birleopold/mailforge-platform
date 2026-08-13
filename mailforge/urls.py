@@ -50,6 +50,11 @@ urlpatterns = [
         name="webmail-message",
     ),
     path(
+        "mail/messages/<str:email_id>/actions/",
+        message_action_views.webmail_message_actions,
+        name="webmail-message-actions",
+    ),
+    path(
         "mail/messages/<str:email_id>/move/",
         message_action_views.webmail_move_message,
         name="webmail-move-message",

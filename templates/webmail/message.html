@@ -6,26 +6,36 @@
 <section class="card mail-message">
   <div class="section-heading">
     <div>
-      <div class="eyebrow">MESSAGE</div>
+      <div class="eyebrow">{% if '$draft' in email.keywords %}DRAFT{% else %}MESSAGE{% endif %}</div>
       <h1>{{ email.subject|default:"(no subject)" }}</h1>
     </div>
     <div class="message-actions">
       {% if email.hasAttachment %}<span class="pill">Attachment</span>{% endif %}
+      {% if '$draft' not in email.keywords %}
       <form method="post" action="{% url 'webmail-mark-unread' email_id=email.id %}">
         {% csrf_token %}
         <button class="button" type="submit">Mark unread</button>
       </form>
+      {% endif %}
     </div>
   </div>
 
   <div class="message-action-bar">
-    <a class="button primary" href="{% url 'webmail-reply' source_id=email.id %}">Reply</a>
-    <a class="button" href="{% url 'webmail-reply-all' source_id=email.id %}">Reply all</a>
-    <a class="button" href="{% url 'webmail-forward' source_id=email.id %}">Forward</a>
-    {% if email.threadId %}
-      <a class="button" href="{% url 'webmail-thread' thread_id=email.threadId %}">Conversation</a>
+    {% if '$draft' in email.keywords %}
+      <a class="button primary" href="{% url 'webmail-edit-draft' draft_id=email.id %}">Edit draft</a>
+      <form method="post" action="{% url 'webmail-draft-discard' draft_id=email.id %}" onsubmit="return confirm('Discard this saved draft?');">
+        {% csrf_token %}
+        <button class="button danger-button" type="submit">Discard draft</button>
+      </form>
+    {% else %}
+      <a class="button primary" href="{% url 'webmail-reply' source_id=email.id %}">Reply</a>
+      <a class="button" href="{% url 'webmail-reply-all' source_id=email.id %}">Reply all</a>
+      <a class="button" href="{% url 'webmail-forward' source_id=email.id %}">Forward</a>
+      {% if email.threadId %}
+        <a class="button" href="{% url 'webmail-thread' thread_id=email.threadId %}">Conversation</a>
+      {% endif %}
+      <a class="button" href="{% url 'webmail-message-actions' email_id=email.id %}">Actions</a>
     {% endif %}
-    <a class="button" href="{% url 'webmail-message-actions' email_id=email.id %}">Actions</a>
   </div>
 
   <div class="message-headers">
@@ -77,6 +87,8 @@
     </div>
   {% endif %}
 
+  {% if '$draft' not in email.keywords %}
   <p class="muted small top-gap">HTML email is sanitized before rendering. Scripts, embedded content, inline styles, unsafe links and remote images are blocked.</p>
+  {% endif %}
 </section>
 {% endblock %}

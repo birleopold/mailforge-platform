@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from datetime import timedelta
 from uuid import uuid4
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.mail import send_mail
 from django.db import transaction
 from django.utils import timezone
 from django.utils.text import slugify
@@ -134,6 +136,26 @@ def create_tenant_invitation(
         },
     )
     return TenantInvitationResult(invitation=invitation, token=token)
+
+
+def send_tenant_invitation_email(invitation: TenantInvitation, *, accept_url: str) -> int:
+    inviter = invitation.invited_by
+    inviter_name = "A MailForge administrator"
+    if inviter is not None:
+        inviter_name = inviter.get_full_name() or inviter.get_username()
+    return send_mail(
+        subject=f"Invitation to join {invitation.tenant.name} on MailForge",
+        message=(
+            f"{inviter_name} invited you to join {invitation.tenant.name} on MailForge "
+            f"as {invitation.get_role_display()}.\n\n"
+            f"Accept the invitation: {accept_url}\n\n"
+            f"This invitation expires {invitation.expires_at:%Y-%m-%d %H:%M %Z}. "
+            "If you were not expecting this invitation, you can ignore this email."
+        ),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[invitation.email],
+        fail_silently=False,
+    )
 
 
 def get_active_invitation(token: str) -> TenantInvitation:

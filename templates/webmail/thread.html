@@ -7,7 +7,7 @@
   <div>
     <div class="eyebrow">CONVERSATION</div>
     <h1>{{ subject }}</h1>
-    <p class="muted">{{ message_count }} message{{ message_count|pluralize }} in this JMAP thread{% if truncated %} · showing first 200{% endif %}</p>
+    <p class="muted">{{ message_count }} message{{ message_count|pluralize }} in this JMAP thread{% if truncated %} · showing latest 200{% endif %}</p>
   </div>
   <span class="pill large">{{ message_count }}</span>
 </div>

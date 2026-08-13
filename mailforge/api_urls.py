@@ -7,6 +7,10 @@ from apps.domains.api import (
     TenantDomainProvisionView,
     TenantDomainVerifyView,
 )
+from apps.domains.lifecycle_api import (
+    TenantDomainEmergencyReactivateView,
+    TenantDomainEmergencySuspendView,
+)
 from apps.mailboxes.api import (
     TenantForwarderDetailView,
     TenantForwarderListCreateView,
@@ -24,11 +28,22 @@ from apps.tenants.api import (
     TenantMemberDetailView,
     TenantMemberListView,
 )
+from apps.tenants.lifecycle_api import TenantEmergencyReactivateView, TenantEmergencySuspendView
 
 
 urlpatterns = [
     path("tenants/", TenantListCreateView.as_view(), name="tenant-list-create"),
     path("tenants/<slug:slug>/", TenantDetailView.as_view(), name="tenant-detail"),
+    path(
+        "tenants/<slug:tenant_slug>/suspend/",
+        TenantEmergencySuspendView.as_view(),
+        name="tenant-emergency-suspend",
+    ),
+    path(
+        "tenants/<slug:tenant_slug>/reactivate/",
+        TenantEmergencyReactivateView.as_view(),
+        name="tenant-emergency-reactivate",
+    ),
     path(
         "tenants/<slug:tenant_slug>/members/",
         TenantMemberListView.as_view(),
@@ -58,6 +73,16 @@ urlpatterns = [
         "tenants/<slug:tenant_slug>/domains/<int:pk>/",
         TenantDomainDetailView.as_view(),
         name="tenant-domain-detail",
+    ),
+    path(
+        "tenants/<slug:tenant_slug>/domains/<int:pk>/suspend/",
+        TenantDomainEmergencySuspendView.as_view(),
+        name="tenant-domain-emergency-suspend",
+    ),
+    path(
+        "tenants/<slug:tenant_slug>/domains/<int:pk>/reactivate/",
+        TenantDomainEmergencyReactivateView.as_view(),
+        name="tenant-domain-emergency-reactivate",
     ),
     path(
         "tenants/<slug:tenant_slug>/domains/<int:pk>/verify/",

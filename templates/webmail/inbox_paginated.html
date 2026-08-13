@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+{% block title %}{% if selected_mailbox %}{{ selected_mailbox.name }}{% else %}Mail{% endif %} · MailForge{% endblock %}
+{% block content %}
+<div class="mail-layout">
+  <aside class="card mail-sidebar">
+    <div class="eyebrow">MAILBOX</div>
+    <h2>{{ mail_account.name|default:"Mail" }}</h2>
+    <a class="button primary full" href="{% url 'webmail-compose' %}">Compose</a>
+    <nav class="top-gap-sm">
+      {% for mailbox in mailboxes %}
+        <a class="mail-folder {% if selected_mailbox_id == mailbox.id|stringformat:'s' %}active{% endif %}" href="{% url 'webmail-inbox' %}?mailbox={{ mailbox.id|urlencode }}">
+          <span>{{ mailbox.name }}</span>
+          {% if mailbox.unreadEmails %}<span class="pill">{{ mailbox.unreadEmails }}</span>{% endif %}
+        </a>
+      {% empty %}
+        <div class="empty">No mailboxes are available.</div>
+      {% endfor %}
+    </nav>
+  </aside>
+
+  <section class="card mail-main">
+    <div class="section-heading">
+      <div>
+        <div class="eyebrow">WEBMAIL</div>
+        <h1>{% if selected_mailbox %}{{ selected_mailbox.name }}{% else %}Mail{% endif %}</h1>
+        <div class="muted small">
+          {% if total != None %}
+            {{ total }} message{{ total|pluralize }}
+          {% else %}
+            Page {{ page }}
+          {% endif %}
+          {% if search_text %} · search: “{{ search_text }}”{% endif %}
+        </div>
+      </div>
+      {% if pages %}<span class="pill">Page {{ page }} of {{ pages }}</span>{% endif %}
+    </div>
+
+    {% if selected_mailbox %}
+    <form class="mail-search" method="get" action="{% url 'webmail-inbox' %}">
+      <input type="hidden" name="mailbox" value="{{ selected_mailbox_id }}">
+      <input type="search" name="q" value="{{ search_text }}" placeholder="Search this mailbox" aria-label="Search this mailbox">
+      <button class="button" type="submit">Search</button>
+      {% if search_text %}
+        <a class="button" href="{% url 'webmail-inbox' %}?mailbox={{ selected_mailbox_id|urlencode }}">Clear</a>
+      {% endif %}
+    </form>
+    {% endif %}
+
+    {% if emails %}
+      <div class="mail-list">
+        {% for email in emails %}
+          <a class="mail-row {% if '$seen' not in email.keywords %}unread{% endif %}" href="{% url 'webmail-message' email_id=email.id %}">
+            <div class="mail-sender">
+              {% for sender in email.from %}
+                {{ sender.name|default:sender.email }}{% if not forloop.last %}, {% endif %}
+              {% empty %}Unknown sender{% endfor %}
+            </div>
+            <div class="mail-summary">
+              <strong>{{ email.subject|default:"(no subject)" }}</strong>
+              {% if email.preview %}<span>— {{ email.preview }}</span>{% endif %}
+            </div>
+            <div class="mail-meta">
+              {% if email.hasAttachment %}<span aria-label="Has attachment">📎</span>{% endif %}
+              {% if '$draft' in email.keywords %}<span class="pill status-pending">Draft</span>{% endif %}
+              <span>{% if email.receivedAt %}{{ email.receivedAt }}{% elif email.sentAt %}{{ email.sentAt }}{% endif %}</span>
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty">
+        {% if search_text %}No messages matched this search.{% else %}This mailbox has no messages on this page.{% endif %}
+      </div>
+    {% endif %}
+
+    {% if has_previous or has_next %}
+      <nav class="mail-pagination" aria-label="Mailbox pages">
+        {% if has_previous %}
+          <a class="button" href="{% url 'webmail-inbox' %}?mailbox={{ selected_mailbox_id|urlencode }}&q={{ search_text|urlencode }}&page={{ previous_page }}">← Newer</a>
+        {% else %}
+          <span></span>
+        {% endif %}
+        <span class="muted small">Page {{ page }}{% if pages %} of {{ pages }}{% endif %}</span>
+        {% if has_next %}
+          <a class="button" href="{% url 'webmail-inbox' %}?mailbox={{ selected_mailbox_id|urlencode }}&q={{ search_text|urlencode }}&page={{ next_page }}">Older →</a>
+        {% endif %}
+      </nav>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

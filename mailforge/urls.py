@@ -3,7 +3,7 @@ from django.contrib.auth.views import LoginView, LogoutView
 from django.http import JsonResponse
 from django.urls import include, path
 
-from mailforge import portal_views, webmail_views
+from mailforge import membership_views, portal_views, webmail_views
 
 
 def health(request):
@@ -18,6 +18,11 @@ urlpatterns = [
         name="login",
     ),
     path("accounts/logout/", LogoutView.as_view(), name="logout"),
+    path(
+        "invitations/<str:token>/",
+        membership_views.tenant_invitation,
+        name="tenant-invitation",
+    ),
     path("mail/", webmail_views.webmail_home, name="webmail-home"),
     path("mail/connect/", webmail_views.webmail_connect, name="webmail-connect"),
     path(
@@ -66,6 +71,31 @@ urlpatterns = [
         "portal/tenants/<slug:tenant_slug>/",
         portal_views.tenant_detail,
         name="portal-tenant",
+    ),
+    path(
+        "portal/tenants/<slug:tenant_slug>/members/",
+        membership_views.member_management,
+        name="portal-members",
+    ),
+    path(
+        "portal/tenants/<slug:tenant_slug>/members/invite/",
+        membership_views.tenant_invite,
+        name="portal-tenant-invite",
+    ),
+    path(
+        "portal/tenants/<slug:tenant_slug>/invitations/<int:invitation_pk>/revoke/",
+        membership_views.invitation_revoke,
+        name="portal-invitation-revoke",
+    ),
+    path(
+        "portal/tenants/<slug:tenant_slug>/members/<int:membership_pk>/role/",
+        membership_views.membership_role_update,
+        name="portal-membership-role",
+    ),
+    path(
+        "portal/tenants/<slug:tenant_slug>/members/<int:membership_pk>/remove/",
+        membership_views.membership_remove,
+        name="portal-membership-remove",
     ),
     path(
         "portal/tenants/<slug:tenant_slug>/domains/create/",

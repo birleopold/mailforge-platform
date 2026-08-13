@@ -257,3 +257,14 @@ class ComposeForm(forms.Form):
                 f"Attachments exceed the {settings.MAILFORGE_MAX_TOTAL_ATTACHMENT_MB} MB total limit."
             )
         return files
+
+
+class DraftComposeForm(ComposeForm):
+    """Compose validation that allows recipient-less, partially written drafts."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["to"].required = False
+
+    def clean_to(self):
+        return _parse_compose_addresses(self.cleaned_data.get("to", ""))

@@ -8,6 +8,7 @@ from apps.audit.models import AuditEvent
 from apps.domains.dns_readiness import check_domain_dns
 from apps.domains.models import Domain
 from apps.mailboxes.models import Mailbox
+from apps.tenants.models import Tenant
 from integrations.factory import get_mail_backend
 
 
@@ -47,17 +48,21 @@ def suspend_domain(domain_id: int, *, actor=None, backend=None) -> DomainSuspens
     mailboxes = _active_backend_mailboxes(domain)
     failures = []
     if mailboxes:
-        backend = backend or get_mail_backend()
-        setter = _suspension_setter(backend)
-        for mailbox in mailboxes:
-            try:
-                setter(
-                    account_id=mailbox.backend_identifier,
-                    suspended=True,
-                    sending_enabled=False,
-                )
-            except Exception:
-                failures.append(mailbox.email_address)
+        try:
+            backend = backend or get_mail_backend()
+            setter = _suspension_setter(backend)
+        except Exception:
+            failures = [mailbox.email_address for mailbox in mailboxes]
+        else:
+            for mailbox in mailboxes:
+                try:
+                    setter(
+                        account_id=mailbox.backend_identifier,
+                        suspended=True,
+                        sending_enabled=False,
+                    )
+                except Exception:
+                    failures.append(mailbox.email_address)
 
     with transaction.atomic():
         locked = Domain.objects.select_for_update().select_related("tenant").get(pk=domain_id)
@@ -112,7 +117,7 @@ def reactivate_domain(
     domain = Domain.objects.select_related("tenant").get(pk=domain_id)
     if domain.status == Domain.Status.DECOMMISSIONED:
         raise DomainLifecycleError("A decommissioned domain cannot be reactivated.")
-    if domain.tenant.status == domain.tenant.Status.SUSPENDED and not allow_suspended_tenant:
+    if domain.tenant.status == Tenant.Status.SUSPENDED and not allow_suspended_tenant:
         raise DomainLifecycleError("Reactivate the organization before reactivating this domain.")
     if domain.status != Domain.Status.SUSPENDED:
         return DomainSuspensionResult(domain=domain, success=True)
@@ -121,8 +126,16 @@ def reactivate_domain(
     failures = []
     restored = []
     if mailboxes:
-        backend = backend or get_mail_backend()
-        setter = _suspension_setter(backend)
+        try:
+            backend = backend or get_mail_backend()
+            setter = _suspension_setter(backend)
+        except Exception:
+            return DomainSuspensionResult(
+                domain=domain,
+                success=False,
+                failed_addresses=tuple(mailbox.email_address for mailbox in mailboxes),
+            )
+
         for mailbox in mailboxes:
             try:
                 setter(

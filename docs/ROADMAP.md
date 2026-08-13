@@ -25,9 +25,9 @@
 - [x] Browser management portal for organizations/domains/forwarders.
 - [x] Mailbox suspend/reactivate/password-reset/delete lifecycle with audit and reserved tombstones.
 - [x] Forwarder destination update/delete lifecycle with audit and reserved tombstones.
-- [ ] Tenant membership invitation/role-management UI.
+- [x] Tenant invitation, invited-only signup and role-management portal/API.
 - [ ] Plan-specific quota/entitlement engine.
-- [ ] Emergency suspend controls.
+- [x] Emergency tenant/domain suspend and safe reactivation controls.
 
 ## Phase 2 — DNS and deliverability
 - [x] Persist per-domain DNS readiness snapshots.
@@ -40,7 +40,7 @@
 - [x] Synchronize MailForge readiness state with Stalwart `emailSend` account permissions.
 - [x] Create new mailboxes with sending denied until their domain is ready.
 - [x] Periodically reconcile provisioned domains and Stalwart sending permissions with Celery beat.
-- [ ] MTA-STS/TLS-RPT guidance and validation.
+- [x] MTA-STS/TLS-RPT guidance and validation as non-gating transport-security checks.
 - [ ] Queue/reputation monitoring.
 - [ ] Real-domain deliverability tests to Gmail/Outlook/Yahoo.
 
@@ -61,7 +61,7 @@
 - [x] Attachment upload/download with size limits and authenticated blob access.
 - [x] Preserve original attachments when forwarding.
 - [ ] Conversation/thread view.
-- [ ] Safe HTML mail sanitization/rendering.
+- [x] Safe HTML mail sanitization/rendering with remote-content blocking.
 - [ ] Draft autosave/edit existing drafts.
 - [ ] Move/archive/delete/spam actions.
 - [ ] Pagination/infinite scroll.
@@ -88,7 +88,7 @@
 - [ ] New-tenant probation.
 - [ ] Abuse/anomaly detection.
 - [x] Backend-enforced readiness-based sending restrictions for MailForge-managed mailboxes.
-- [ ] Emergency account/domain suspension controls.
+- [x] Emergency tenant/domain suspension with full Stalwart mailbox-permission revocation and rollback-safe reactivation.
 - [ ] Backup automation and restore drill.
 - [ ] Incident runbooks.
 - [ ] External security review before open signup.

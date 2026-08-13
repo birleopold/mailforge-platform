@@ -22,6 +22,9 @@
     <a class="button primary" href="{% url 'webmail-reply' source_id=email.id %}">Reply</a>
     <a class="button" href="{% url 'webmail-reply-all' source_id=email.id %}">Reply all</a>
     <a class="button" href="{% url 'webmail-forward' source_id=email.id %}">Forward</a>
+    {% if email.threadId %}
+      <a class="button" href="{% url 'webmail-thread' thread_id=email.threadId %}">Conversation</a>
+    {% endif %}
   </div>
 
   <div class="message-headers">

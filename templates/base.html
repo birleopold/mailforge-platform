@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="{% static 'mailforge/app.css' %}">
   <link rel="stylesheet" href="{% static 'mailforge/admin.css' %}">
   <link rel="stylesheet" href="{% static 'mailforge/email.css' %}">
+  {% block extra_head %}{% endblock %}
 </head>
 <body>
   <header class="topbar">
@@ -35,5 +36,6 @@
     {% endif %}
     {% block content %}{% endblock %}
   </main>
+  {% block scripts %}{% endblock %}
 </body>
 </html>

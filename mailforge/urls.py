@@ -3,7 +3,14 @@ from django.contrib.auth.views import LoginView, LogoutView
 from django.http import JsonResponse
 from django.urls import include, path
 
-from mailforge import membership_views, portal_views, suspension_views, thread_views, webmail_views
+from mailforge import (
+    membership_views,
+    message_action_views,
+    portal_views,
+    suspension_views,
+    thread_views,
+    webmail_views,
+)
 
 
 def health(request):
@@ -41,6 +48,31 @@ urlpatterns = [
         "mail/messages/<str:email_id>/",
         webmail_views.webmail_message,
         name="webmail-message",
+    ),
+    path(
+        "mail/messages/<str:email_id>/move/",
+        message_action_views.webmail_move_message,
+        name="webmail-move-message",
+    ),
+    path(
+        "mail/messages/<str:email_id>/archive/",
+        message_action_views.webmail_archive_message,
+        name="webmail-archive-message",
+    ),
+    path(
+        "mail/messages/<str:email_id>/trash/",
+        message_action_views.webmail_trash_message,
+        name="webmail-trash-message",
+    ),
+    path(
+        "mail/messages/<str:email_id>/spam/",
+        message_action_views.webmail_spam_message,
+        name="webmail-spam-message",
+    ),
+    path(
+        "mail/messages/<str:email_id>/delete-permanently/",
+        message_action_views.webmail_permanently_delete_message,
+        name="webmail-delete-message",
     ),
     path(
         "mail/messages/<str:source_id>/reply/",

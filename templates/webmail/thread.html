@@ -23,7 +23,7 @@
               <strong>{{ sender.name|default:sender.email }}</strong>{% if sender.email %} <span class="muted small">&lt;{{ sender.email }}&gt;</span>{% endif %}{% if not forloop.last %}, {% endif %}
             {% empty %}<strong>Unknown sender</strong>{% endfor %}
           </div>
-          <div class="muted small">{{ email.receivedAt|default:email.sentAt }}</div>
+          <div class="muted small">{% if email.receivedAt %}{{ email.receivedAt }}{% elif email.sentAt %}{{ email.sentAt }}{% endif %}</div>
         </div>
         <div class="message-actions">
           {% if email.hasAttachment %}<span class="pill">Attachment</span>{% endif %}

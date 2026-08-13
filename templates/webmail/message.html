@@ -25,6 +25,7 @@
     {% if email.threadId %}
       <a class="button" href="{% url 'webmail-thread' thread_id=email.threadId %}">Conversation</a>
     {% endif %}
+    <a class="button" href="{% url 'webmail-message-actions' email_id=email.id %}">Actions</a>
   </div>
 
   <div class="message-headers">

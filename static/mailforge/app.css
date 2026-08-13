@@ -64,7 +64,7 @@ a { color: inherit; }
 .narrow-card { max-width: 620px; }
 .card h2 { margin: 0 0 16px; font-size: 19px; }
 .card h3 { font-size: 15px; }
-.auth-card h1 { font-size: 30px; margin: 8px 0; }
+.auth-card h1, .invitation-card h1 { font-size: 30px; margin: 8px 0; }
 .list { display: flex; flex-direction: column; gap: 8px; }
 .list-row {
   min-height: 64px;
@@ -112,8 +112,13 @@ a { color: inherit; }
 .button.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
 .button.primary:hover { background: var(--primary-dark); }
 .button.full { width: 100%; }
+.small-button { min-height: 32px; padding: 6px 9px; font-size: 12px; }
+.danger-button { color: var(--danger); border-color: #efbbb6; background: #fff6f5; }
+.danger-button:hover { background: #ffebe9; }
 .stacked-form p { margin: 0 0 15px; }
 .stacked-form label { display: block; font-weight: 700; margin-bottom: 6px; font-size: 13px; }
+.inline-form { display: flex; align-items: center; gap: 7px; margin: 0; }
+.inline-form select { min-width: 125px; }
 input, textarea, select {
   width: 100%;
   border: 1px solid #cad2df;
@@ -143,6 +148,27 @@ input:focus, textarea:focus, select:focus { outline: 3px solid rgba(52, 87, 213,
 .top-gap-sm { margin-top: 14px; }
 hr { border: 0; border-top: 1px solid var(--border); margin: 22px 0; }
 .wrap { overflow-wrap: anywhere; }
+.danger-zone { border-color: #f2c5c1; background: #fffafa; }
+.member-row { align-items: flex-start; }
+.member-admin { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; }
+.mailbox-row { align-items: flex-start; }
+.mailbox-identity { min-width: 0; overflow-wrap: anywhere; }
+.mailbox-admin { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.mailbox-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.mailbox-actions form { margin: 0; }
+.inline-admin-panel { position: relative; }
+.inline-admin-panel > summary { list-style: none; user-select: none; }
+.inline-admin-panel > summary::-webkit-details-marker { display: none; }
+.compact-admin-form {
+  width: min(360px, 82vw);
+  margin-top: 8px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+.danger-panel .compact-admin-form { border-color: #f2c5c1; }
 
 .mail-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 18px; align-items: start; }
 .mail-sidebar { position: sticky; top: 86px; padding: 18px; }
@@ -211,6 +237,9 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 22px 0; }
   .grid.two { grid-template-columns: 1fr; }
   .split-heading { align-items: flex-start; flex-direction: column; }
   .page-heading h1 { font-size: 28px; }
+  .member-row, .mailbox-row { flex-direction: column; }
+  .member-admin, .mailbox-admin { width: 100%; align-items: stretch; justify-content: flex-start; }
+  .inline-form, .mailbox-actions { justify-content: flex-start; }
   .mail-layout { grid-template-columns: 1fr; }
   .mail-sidebar { position: static; }
   .mail-search { grid-template-columns: 1fr auto; }

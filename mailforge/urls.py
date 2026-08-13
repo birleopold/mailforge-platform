@@ -4,6 +4,7 @@ from django.http import JsonResponse
 from django.urls import include, path
 
 from mailforge import (
+    draft_views,
     membership_views,
     message_action_views,
     portal_views,
@@ -39,6 +40,23 @@ urlpatterns = [
     ),
     path("mail/inbox/", webmail_views.webmail_inbox, name="webmail-inbox"),
     path("mail/compose/", webmail_views.webmail_compose, name="webmail-compose"),
+    path("mail/drafts/save/", draft_views.webmail_save_draft, name="webmail-draft-save"),
+    path(
+        "mail/drafts/autosave/",
+        draft_views.webmail_autosave_draft,
+        name="webmail-draft-autosave",
+    ),
+    path("mail/drafts/send/", draft_views.webmail_send_draft, name="webmail-draft-send"),
+    path(
+        "mail/drafts/<str:draft_id>/edit/",
+        draft_views.webmail_edit_draft,
+        name="webmail-edit-draft",
+    ),
+    path(
+        "mail/drafts/<str:draft_id>/discard/",
+        draft_views.webmail_discard_draft,
+        name="webmail-draft-discard",
+    ),
     path(
         "mail/threads/<str:thread_id>/",
         thread_views.webmail_thread,

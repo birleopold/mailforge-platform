@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load webmail_html %}
 {% block title %}{{ email.subject|default:"Message" }} · MailForge{% endblock %}
 {% block content %}
 <a class="back" href="{% url 'webmail-inbox' %}">← Inbox</a>
@@ -50,7 +51,7 @@
     <div><strong>Received</strong><span>{{ email.receivedAt }}</span></div>
   </div>
 
-  <div class="mail-body">{{ plain_text_body|linebreaksbr }}</div>
+  {% sanitized_email_body email plain_text_body %}
 
   {% if email.attachments %}
     <hr>
@@ -72,6 +73,6 @@
     </div>
   {% endif %}
 
-  <p class="muted small top-gap">HTML bodies are intentionally not rendered raw yet. MailForge is showing the plain-text representation until HTML sanitization is added.</p>
+  <p class="muted small top-gap">HTML email is sanitized before rendering. Scripts, embedded content, inline styles, unsafe links and remote images are blocked.</p>
 </section>
 {% endblock %}

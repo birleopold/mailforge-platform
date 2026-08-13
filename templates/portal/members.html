@@ -1,0 +1,90 @@
+{% extends 'base.html' %}
+{% block title %}Members · {{ tenant.name }} · MailForge{% endblock %}
+{% block content %}
+<a class="back" href="{% url 'portal-tenant' tenant_slug=tenant.slug %}">← {{ tenant.name }}</a>
+<div class="page-heading split-heading">
+  <div>
+    <div class="eyebrow">ORGANIZATION ACCESS</div>
+    <h1>Members</h1>
+    <p class="muted">Invite administrators, billing users and viewers without sharing the organization owner's account.</p>
+  </div>
+  <span class="pill large">{{ members|length }} member{{ members|length|pluralize }}</span>
+</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Current members</h2>
+    <div class="list compact">
+      {% for member in members %}
+        <div class="list-row static member-row">
+          <div>
+            <strong>{{ member.user.get_full_name|default:member.user.get_username }}</strong>
+            <div class="muted small">{{ member.user.email|default:"No email address" }}</div>
+          </div>
+          <div class="member-admin">
+            <span class="pill">{{ member.get_role_display }}</span>
+            {% if can_manage_roles and member.role != 'owner' %}
+              <form method="post" action="{% url 'portal-membership-role' tenant_slug=tenant.slug membership_pk=member.pk %}" class="inline-form">
+                {% csrf_token %}
+                <select name="role" aria-label="Role for {{ member.user.get_username }}">
+                  {% for value, label in role_form.role.field.choices %}
+                    <option value="{{ value }}" {% if member.role == value %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
+                <button class="button small-button" type="submit">Save</button>
+              </form>
+              <form method="post" action="{% url 'portal-membership-remove' tenant_slug=tenant.slug membership_pk=member.pk %}" class="inline-form" onsubmit="return confirm('Remove this member from {{ tenant.name|escapejs }}?');">
+                {% csrf_token %}
+                <button class="button small-button danger-button" type="submit">Remove</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+      {% empty %}
+        <div class="empty">No organization members were found.</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Invite member</h2>
+    {% if can_invite %}
+      <p class="muted">Invitation links expire automatically and can create a portal account only for the invited email address.</p>
+      <form method="post" action="{% url 'portal-tenant-invite' tenant_slug=tenant.slug %}" class="stacked-form">
+        {% csrf_token %}
+        {{ invite_form.as_p }}
+        <button class="button primary" type="submit">Send invitation</button>
+      </form>
+    {% else %}
+      <div class="empty">Your organization role cannot invite members.</div>
+    {% endif %}
+  </section>
+</div>
+
+<section class="card top-gap">
+  <div class="section-heading">
+    <h2>Pending invitations</h2>
+    <span class="pill">{{ pending_invitations|length }}</span>
+  </div>
+  {% if pending_invitations %}
+    <div class="list compact">
+      {% for invitation in pending_invitations %}
+        <div class="list-row static">
+          <div>
+            <strong>{{ invitation.email }}</strong>
+            <div class="muted small">{{ invitation.get_role_display }} · expires {{ invitation.expires_at|date:"M j, Y H:i" }}</div>
+          </div>
+          {% if can_invite %}
+            <form method="post" action="{% url 'portal-invitation-revoke' tenant_slug=tenant.slug invitation_pk=invitation.pk %}">
+              {% csrf_token %}
+              <button class="button small-button danger-button" type="submit">Revoke</button>
+            </form>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty">No active invitations.</div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -3,7 +3,7 @@ from django.contrib.auth.views import LoginView, LogoutView
 from django.http import JsonResponse
 from django.urls import include, path
 
-from mailforge import membership_views, portal_views, suspension_views, webmail_views
+from mailforge import membership_views, portal_views, suspension_views, thread_views, webmail_views
 
 
 def health(request):
@@ -32,6 +32,11 @@ urlpatterns = [
     ),
     path("mail/inbox/", webmail_views.webmail_inbox, name="webmail-inbox"),
     path("mail/compose/", webmail_views.webmail_compose, name="webmail-compose"),
+    path(
+        "mail/threads/<str:thread_id>/",
+        thread_views.webmail_thread,
+        name="webmail-thread",
+    ),
     path(
         "mail/messages/<str:email_id>/",
         webmail_views.webmail_message,

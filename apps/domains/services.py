@@ -16,7 +16,7 @@ class DomainVerificationTemporaryError(RuntimeError):
     """Raised when DNS verification should be retried later."""
 
 
-class DomainVerificationBlockedError(RuntimeError):
+class DomainVerificationBlockedError(DomainVerificationTemporaryError):
     """Raised when emergency suspension intentionally blocks verification state changes."""
 
 

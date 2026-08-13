@@ -2,6 +2,7 @@ import re
 
 from django import forms
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
@@ -9,10 +10,59 @@ from django.core.validators import validate_email
 from apps.domains.models import normalize_domain_name
 from apps.mailboxes.forwarders import normalize_destinations
 from apps.mailboxes.models import normalize_local_part
+from apps.tenants.models import TenantMembership
+
+
+MEMBER_ROLE_CHOICES = [
+    (TenantMembership.Role.ADMIN, "Administrator"),
+    (TenantMembership.Role.BILLING, "Billing"),
+    (TenantMembership.Role.VIEWER, "Viewer"),
+]
 
 
 class TenantCreateForm(forms.Form):
     name = forms.CharField(max_length=200, label="Organization name")
+
+
+class TenantInvitationForm(forms.Form):
+    email = forms.EmailField(label="Email address")
+    role = forms.ChoiceField(choices=MEMBER_ROLE_CHOICES)
+
+    def clean_email(self):
+        return self.cleaned_data["email"].strip().lower()
+
+
+class TenantMembershipRoleForm(forms.Form):
+    role = forms.ChoiceField(choices=MEMBER_ROLE_CHOICES)
+
+
+class InvitationSignupForm(forms.Form):
+    username = forms.CharField(max_length=150)
+    password1 = forms.CharField(label="Password", widget=forms.PasswordInput, strip=False)
+    password2 = forms.CharField(label="Confirm password", widget=forms.PasswordInput, strip=False)
+
+    def clean_username(self):
+        username = self.cleaned_data["username"].strip()
+        if get_user_model().objects.filter(username__iexact=username).exists():
+            raise ValidationError("That username is already in use.")
+        return username
+
+    def clean(self):
+        cleaned = super().clean()
+        password1 = cleaned.get("password1")
+        password2 = cleaned.get("password2")
+        if password1 and password2 and password1 != password2:
+            self.add_error("password2", "The passwords do not match.")
+        if password1:
+            validate_password(password1)
+        return cleaned
+
+    def create_user(self, *, email: str):
+        return get_user_model().objects.create_user(
+            username=self.cleaned_data["username"],
+            email=email.strip().lower(),
+            password=self.cleaned_data["password1"],
+        )
 
 
 class DomainCreateForm(forms.Form):
